@@ -166,18 +166,33 @@ derived from magit-section. BUFFER-TITLE is the title of the buffer. The
       (insert (concat (prin1-to-string node) "\n")))
 
 
+(defun ord--render-collection-view (collection)
+  (let ((node-ids (org-roam-desktop-collection-nodes collection)))
+    (magit-section-mode-buffer-setup
+     (ord--buffer-name-for-collection collection)
+     (org-roam-desktop-collection-name collection)
+     (lambda ()
+       (seq-do
+        (lambda (node-id)
+          (let ((node (org-roam-node-from-id node-id)))
+            (magit-insert-section section (org-roam-node-section)
+              (insert (concat (propertize (org-roam-node-title node)
+                                          'font-lock-face 'org-roam-title)))
+              (magit-insert-heading)
+              (oset section node node)
+              (seq-do
+               (lambda (func)
+                 (funcall func node))
+               ord-mode-entry-section-functions))))
+        node-ids)))))
+
 (defun ord-view-collection (collection)
-  (interactive
-   (list
-    (ord--choose-collection-by-name))) 
-   (let ((node-ids (org-roam-desktop-collection-nodes collection)))
-     (magit-section-mode-buffer-setup
-      (ord--buffer-name-for-collection collection)
-      (org-roam-desktop-collection-name collection)
-      (lambda ()
-        (seq-do
-         ord-mode-sections-for-each-entry
-         node-ids)))))
+  (interactive (list
+                (ord--choose-collection-by-name)))
+  (let ((buffer-name (ord--buffer-name-for-collection collection)))
+    (if (get-buffer buffer-name)
+        (switch-to-buffer-other-window buffer-name)
+      (ord--render-collection-view collection))))      
 
 ;;; save, close, and load collections
 
