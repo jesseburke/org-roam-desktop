@@ -43,10 +43,9 @@
   name id nodes)
 
 (defvar list-of-org-roam-desktop-collections '())
-;; (setq list-of-org-roam-desktop-collections '())
 
-(defcustom ord-mode-sections-for-each-entry
-  'ord-mode-sections-for-each-entry-default
+(defcustom ord-mode-entry-section-functions
+  (list 'ord-mode-sections-for-each-entry-default)
   "Function that draws the section for each entry in a collection."
   :group 'org-roam-desktop
   :type 'function)
@@ -54,7 +53,7 @@
 ;; (setq test-collection (car list-of-org-roam-desktop-collections))
 ;; (setq test-node-id (elt (org-roam-desktop-collection-nodes test-collection) 0))
 
-;; (funcall ord-mode-sections-for-each-entry test-node-id)
+;; (funcall ord-mode-entry-section-functions test-node-id)
 
 ;;; basic functions for collections
 (defun org-roam-desktop-create-collection (collection-name)
@@ -163,14 +162,9 @@ derived from magit-section. BUFFER-TITLE is the title of the buffer. The
           (funcall display-func))))
     (switch-to-buffer-other-window buffer)))
 
-(defun ord-mode-sections-for-each-entry-default (node-id)
-  (magit-insert-section section (org-roam-node-section)
-    (let ((node (org-roam-node-from-id node-id)))
-      (insert (concat (propertize (org-roam-node-title node)
-                                  'font-lock-face 'org-roam-title)))
-      (magit-insert-heading)
-      (oset section node node)
-      (insert (concat (prin1-to-string node) "\n")))))
+(defun ord-mode-sections-for-each-entry-default (node)
+      (insert (concat (prin1-to-string node) "\n")))
+
 
 (defun ord-view-collection (collection)
   (interactive
@@ -191,18 +185,17 @@ derived from magit-section. BUFFER-TITLE is the title of the buffer. The
   (interactive
    (list
     (ord--choose-collection-by-name)))
-    (let ((file-name (read-file-name
-                     "Save collection as: "
-                     (file-name-concat org-roam-directory org-roam-desktop-dir)
-                     nil
-                     nil
-                     (ord--default-file-name-for-collection
-                      collection)))
-          (json-str (ord--collection-to-json collection)))
-      (unless (file-directory-p (file-name-directory file-name))
-        (make-directory (file-name-directory file-name) t))
-      (with-temp-file file-name
-        (insert json-str))))
+  (let
+      ((file-name (read-file-name
+                   "Save collection as: "
+                   (file-name-concat org-roam-directory org-roam-desktop-dir)
+                   nil nil
+                   (ord--default-file-name-for-collection collection)))
+       (json-str (ord--collection-to-json collection)))
+    (unless (file-directory-p (file-name-directory file-name))
+      (make-directory (file-name-directory file-name) t))
+    (with-temp-file file-name
+      (insert json-str))))
 
 (defun ord-close-collection (collection-to-remove)
   (setq list-of-org-roam-desktop-collections
