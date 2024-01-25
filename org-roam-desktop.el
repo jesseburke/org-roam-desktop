@@ -42,14 +42,25 @@
 (cl-defstruct org-roam-desktop-collection
   name id nodes)
 
-(defvar org-roam-desktop-collection-list '())
-;; (setq org-roam-desktop-collection-list '())
+(defvar list-of-org-roam-desktop-collections '())
+;; (setq list-of-org-roam-desktop-collections '())
+
+(defcustom ord-mode-sections-for-each-entry
+  'ord-mode-sections-for-each-entry-default
+  "Function that draws the section for each entry in a collection."
+  :group 'org-roam-desktop
+  :type 'function)
+
+;; (setq test-collection (car list-of-org-roam-desktop-collections))
+;; (setq test-node-id (elt (org-roam-desktop-collection-nodes test-collection) 0))
+
+;; (funcall ord-mode-sections-for-each-entry test-node-id)
 
 ;;; basic functions for collections
 (defun org-roam-desktop-create-collection (collection-name)
   (interactive (list (read-string "name of new collection: " "")))
   (add-to-list
-   'org-roam-desktop-collection-list
+   'list-of-org-roam-desktop-collections
    (make-org-roam-desktop-collection :name collection-name
                                      :id (concat "ord-" (org-id-uuid))
                                      :nodes [])))
@@ -62,39 +73,48 @@
       :nodes (org-roam-desktop-collection-nodes
               collection)))
 
+;; (setq test-collection (car list-of-org-roam-desktop-collections))
+;; (ord--collection-to-plist test-collection)
+;; (json-serialize (ord--collection-to-plist test-collection))
+
 (defun ord--collection-from-plist (collection-plist)
   "COLLECTION-PLIST should have keys :name, :id, and :nodes. Returns a
   struct of type org-roam-desktop-collection."
-  )
+  (cl-destructuring-bind (&key name id nodes) collection-plist
+    (make-org-roam-desktop-collection :name name :id id :nodes nodes)))
 
-;; (setq test-collection (car org-roam-desktop-collection-list))
-;; (ord--collection-to-plist test-collection)
-;; (json-serialize (ord--collection-to-plist test-collection))
+;; (ord--collection-from-plist (ord--collection-to-plist test-collection))
 
 (defun ord--collection-to-json (collection)
   "COLLECTION should be an org-roam-desktop-collection struct. Returns a
   json string representing that struct."
   (json-serialize (ord--collection-to-plist collection)))
 
+;; (ord--collection-to-json test-collection)
+
 (defun ord--collection-from-json (collection-json)
-  ""
-)
+  "COLLECTION-JSON should be a string of json, with keys name, id, and nodes. Returns a
+  struct of type org-roam-desktop-collection with corresponding
+  values."
+  (ord--collection-from-plist (json-parse-string collection-json
+                                                 :object-type
+                                                 'plist)))
+
+;; (ord--collection-from-json (ord--collection-to-json test-collection))
   
 (defun ord--choose-collection-by-name ()
   "To be passed to interactive form: lets the user choose from among
 the names of collections currently in
-  org-roam-desktop-collection-list, and then returns the full
+  list-of-org-roam-desktop-collections, and then returns the full
   collection of the name selected."
   (let ((extended-list
          (seq-map (lambda (collection)
                     (cons
                      (org-roam-desktop-collection-name collection)
                      collection))
-                  org-roam-desktop-collection-list)))
+                  list-of-org-roam-desktop-collections)))
     (cdr (assoc (completing-read "Choose collection: " extended-list)
                 extended-list))))
-
-;; (ord--collection-to-json test-collection)
 
 ;;; add nodes to a collection
 
@@ -126,23 +146,31 @@ first 6 digits of its id."
    (org-roam-desktop-collection-name collection)   
    ".json"))
 
-(defun magit-section-mode-buffer-setup (title display-func)
+(defun magit-section-mode-buffer-setup (buffer-title collection-name display-func)
   "Wrapper function for displaying sections in a buffer whose mode is
-derived from magit-section. TITLE is the title of the buffer. The
+derived from magit-section. BUFFER-TITLE is the title of the buffer. The
   buffer is erased, a root magit-section is added and
   DISPLAY-FUNC is called inside of the root section. Then
   switch-buffer-other-window is called to show the buffer."
-  (let ((buffer (get-buffer-create title)))
+  (let ((buffer (get-buffer-create buffer-title)))
     (with-current-buffer buffer
       (let ((inhibit-read-only t))
         (erase-buffer)
-        (org-roam-desktop-mode)
-        (magit-insert-section (root)          
+        (org-roam-desktop-mode)        
+        (org-roam-buffer-set-header-line-format collection-name)
+        (magit-insert-section (root)
+          (magit-insert-heading)
           (funcall display-func))))
     (switch-to-buffer-other-window buffer)))
 
-;; should define function that takes an entry from a collection, and
-;; inserts a section for that entry
+(defun ord-mode-sections-for-each-entry-default (node-id)
+  (magit-insert-section section (org-roam-node-section)
+    (let ((node (org-roam-node-from-id node-id)))
+      (insert (concat (propertize (org-roam-node-title node)
+                                  'font-lock-face 'org-roam-title)))
+      (magit-insert-heading)
+      (oset section node node)
+      (insert (concat (prin1-to-string node) "\n")))))
 
 (defun ord-view-collection (collection)
   (interactive
@@ -151,15 +179,10 @@ derived from magit-section. TITLE is the title of the buffer. The
    (let ((node-ids (org-roam-desktop-collection-nodes collection)))
      (magit-section-mode-buffer-setup
       (ord--buffer-name-for-collection collection)
+      (org-roam-desktop-collection-name collection)
       (lambda ()
         (seq-do
-         (lambda (id)
-           (magit-insert-section section (org-roam-node-section)
-             (let ((node (org-roam-node-from-id id)))
-               (insert (concat (propertize (org-roam-node-title node)
-                                           'font-lock-face 'org-roam-title)))
-               (magit-insert-heading)
-               (oset section node node))))
+         ord-mode-sections-for-each-entry
          node-ids)))))
 
 ;;; save, close, and load collections
@@ -182,10 +205,10 @@ derived from magit-section. TITLE is the title of the buffer. The
         (insert json-str))))
 
 (defun ord-close-collection (collection-to-remove)
-  (setq org-roam-desktop-collection-list
+  (setq list-of-org-roam-desktop-collections
         (seq-remove (lambda (collection)
                       (eq collection collection-to-remove))
-                    org-roam-desktop-collection-list)))
+                    list-of-org-roam-desktop-collections)))
 
 (defun ord-save-and-close-collection (collection)
   (interactive
@@ -201,18 +224,23 @@ derived from magit-section. TITLE is the title of the buffer. The
                      (file-name-concat org-roam-directory org-roam-desktop-dir)
                      nil
                      t)))
-    (message file-name)))
+    (with-temp-buffer
+      (insert-file-contents file-name)
+       (add-to-list
+        'list-of-org-roam-desktop-collections
+        (ord--collection-from-json (buffer-substring-no-properties
+                                 (point-min) (point-max)))))))
 
 (define-prefix-command 'org-roam-desktop-map)
-(define-key org-roam-desktop-map (kbd "c")
+(define-key org-roam-desktop-map (kbd "M-c")
             #'org-roam-desktop-create-collection)
-(define-key org-roam-desktop-map (kbd "a")
+(define-key org-roam-desktop-map (kbd "M-a")
             #'org-roam-desktop-add-node-at-point)
-(define-key org-roam-desktop-map (kbd "v")
+(define-key org-roam-desktop-map (kbd "M-v")
             #'ord-view-collection)
-(define-key org-roam-desktop-map (kbd "s") #'ord-save-collection)
-(define-key org-roam-desktop-map (kbd "S") #'ord-save-and-close-collection)
-(define-key org-roam-desktop-map (kbd "l") #'ord-load-collection)
+(define-key org-roam-desktop-map (kbd "M-s") #'ord-save-collection)
+(define-key org-roam-desktop-map (kbd "M-S") #'ord-save-and-close-collection)
+(define-key org-roam-desktop-map (kbd "M-l") #'ord-load-collection)
 
 (global-set-key (kbd "M-d") org-roam-desktop-map)
 
