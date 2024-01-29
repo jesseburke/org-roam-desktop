@@ -39,16 +39,21 @@
   :group 'org-roam-desktop
   :type 'string)
 
+(defcustom ord-mode-entry-section-functions
+  (list 'ord-mode-entry-section-function-default)
+  "Function that draws the section for each entry in a collection."
+  :group 'org-roam-desktop
+  :type 'function)
+
 (cl-defstruct org-roam-desktop-collection
   name id nodes)
 
 (defvar list-of-org-roam-desktop-collections '())
 
-(defcustom ord-mode-entry-section-functions
-  (list 'ord-mode-sections-for-each-entry-default)
-  "Function that draws the section for each entry in a collection."
-  :group 'org-roam-desktop
-  :type 'function)
+(defvar ord-buffer-current-collection nil
+  "A buffer local variable: the collection which an a buffer in
+   ord-mode is displaying.")
+(put 'ord-buffer-current-collection 'permanent-local t)
 
 ;; (setq test-collection (car list-of-org-roam-desktop-collections))
 ;; (setq test-node-id (elt (org-roam-desktop-collection-nodes test-collection) 0))
@@ -162,28 +167,66 @@ derived from magit-section. BUFFER-TITLE is the title of the buffer. The
           (funcall display-func))))
     (switch-to-buffer-other-window buffer)))
 
-(defun ord-mode-sections-for-each-entry-default (node)
+(defun ord-mode-entry-section-function-default (node)
       (insert (concat (prin1-to-string node) "\n")))
 
+(setq ord-mode-entry-section-functions (list 'ord-mode-entry-section-function-default))
 
-(defun ord--render-collection-view (collection)
-  (let ((node-ids (org-roam-desktop-collection-nodes collection)))
+(setq ord-mode-entry-section-functions
+      (list (lambda (node)
+              (org-roam-backlinks-section node
+                                          :section-title " Back links"
+                                          :show-backlink-p 'jb/filter-org-roam-backlink--for-no-orls-or-reading
+                                          :unique t))
+            (lambda (node)
+              (org-roam-backlinks-section node
+                                          :section-title " Reading back links:"
+                                          :show-backlink-p 'jb/filter-org-roam-backlink--for-reading
+                                          :unique t))
+            (lambda (node)
+              (org-roam-backlinks-section node
+                                          :section-title " ORL back links:"
+                                          :show-backlink-p 'jb/filter-org-roam-backlink--for-orl
+                                          :unique t))))            
+
+;; test-collection
+;; (setq test-buffer-name (ord--buffer-name-for-collection
+;;                         test-collection))
+;; (get-buffer test-buffer-name)
+;; (ord--create-and-render-collection-view test-collection)
+;; (switch-to-buffer-other-window test-buffer-name)
+
+;; (setq test-node-ids (org-roam-desktop-collection-nodes
+;;                      test-collection))
+;; (seq-do
+;;  (lambda (node-id)
+;;    (let ((node (org-roam-node-from-id node-id)))     
+;;        (message (org-roam-node-title node))))
+;;  test-node-ids)
+
+;; (setq test-node (org-roam-node-from-id (elt test-node-ids 2)))
+;; (org-roam-node-title test-node)
+
+(defun ord--create-and-render-collection-view (collection)
+  (let ((node-ids (org-roam-desktop-collection-nodes collection)))    
     (magit-section-mode-buffer-setup
      (ord--buffer-name-for-collection collection)
-     (org-roam-desktop-collection-name collection)
+     (org-roam-desktop-collection-name collection)     
      (lambda ()
+       (setq-local ord-buffer-current-collection collection)
        (seq-do
         (lambda (node-id)
-          (let ((node (org-roam-node-from-id node-id)))
-            (magit-insert-section section (org-roam-node-section)
+          (when-let ((node (org-roam-node-from-id node-id)))
+            (magit-insert-section section (org-roam-node-section)              
               (insert (concat (propertize (org-roam-node-title node)
                                           'font-lock-face 'org-roam-title)))
               (magit-insert-heading)
-              (oset section node node)
+              (oset section node node)              
               (seq-do
                (lambda (func)
                  (funcall func node))
-               ord-mode-entry-section-functions))))
+               ord-mode-entry-section-functions)
+              (insert "\n"))))
         node-ids)))))
 
 (defun ord-view-collection (collection)
@@ -192,7 +235,14 @@ derived from magit-section. BUFFER-TITLE is the title of the buffer. The
   (let ((buffer-name (ord--buffer-name-for-collection collection)))
     (if (get-buffer buffer-name)
         (switch-to-buffer-other-window buffer-name)
-      (ord--render-collection-view collection))))      
+      (ord--create-and-render-collection-view collection))))
+   
+(defun ord-refresh-view ()
+  (interactive)
+  "Refresh the contents of the currently selected org-roam-desktop
+  buffer."
+  (unless (not (derived-mode-p 'org-roam-desktop-mode))
+    (ord--create-and-render-collection-view ord-buffer-current-collection)))
 
 ;;; save, close, and load collections
 
@@ -227,19 +277,23 @@ derived from magit-section. BUFFER-TITLE is the title of the buffer. The
 
 (defun ord-load-collection ()
   (interactive)
-  (let ((file-name (read-file-name
-                     "Find collection: "
-                     (file-name-concat org-roam-directory org-roam-desktop-dir)
-                     nil
-                     t)))
+  (let ((file-name
+         (read-file-name
+          "Find collection: "
+          (file-name-concat org-roam-directory org-roam-desktop-dir)
+          nil
+          t)))
     (with-temp-buffer
       (insert-file-contents file-name)
-       (add-to-list
-        'list-of-org-roam-desktop-collections
-        (ord--collection-from-json (buffer-substring-no-properties
-                                 (point-min) (point-max)))))))
+      (add-to-list
+       'list-of-org-roam-desktop-collections
+       (ord--collection-from-json (buffer-substring-no-properties
+                                   (point-min) (point-max)))))))
 
+;;; org-roam-desktop-top map, to be used anywhere in emacs
 (define-prefix-command 'org-roam-desktop-map)
+
+(global-set-key (kbd "M-d") org-roam-desktop-map)
 (define-key org-roam-desktop-map (kbd "M-c")
             #'org-roam-desktop-create-collection)
 (define-key org-roam-desktop-map (kbd "M-a")
@@ -250,8 +304,8 @@ derived from magit-section. BUFFER-TITLE is the title of the buffer. The
 (define-key org-roam-desktop-map (kbd "M-S") #'ord-save-and-close-collection)
 (define-key org-roam-desktop-map (kbd "M-l") #'ord-load-collection)
 
-(global-set-key (kbd "M-d") org-roam-desktop-map)
-
+;;; org-roam-desktop-mode-map, used in ord-mode buffers that display collections
+(define-key org-roam-desktop-mode-map (kbd "g") #'ord-refresh-view)
 
  ;; (define-minor-mode org-roam-desktop-minor-mode
  ;;  "Global minor mode to add nodes to org-roam-desktop collections."
