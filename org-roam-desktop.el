@@ -48,14 +48,14 @@
 (cl-defstruct org-roam-desktop-collection
   name id nodes)
 
-(defvar list-of-org-roam-desktop-collections '())
+(defvar ord-collection-list '())
 
 (defvar ord-buffer-current-collection nil
   "A buffer local variable: the collection which an a buffer in
    ord-mode is displaying.")
 (put 'ord-buffer-current-collection 'permanent-local t)
 
-;; (setq test-collection (car list-of-org-roam-desktop-collections))
+;; (setq test-collection (car ord-collection-list))
 ;; (setq test-node-id (elt (org-roam-desktop-collection-nodes test-collection) 0))
 
 ;; (funcall ord-mode-entry-section-functions test-node-id)
@@ -64,7 +64,7 @@
 (defun org-roam-desktop-create-collection (collection-name)
   (interactive (list (read-string "name of new collection: " "")))
   (add-to-list
-   'list-of-org-roam-desktop-collections
+   'ord-collection-list
    (make-org-roam-desktop-collection :name collection-name
                                      :id (concat "ord-" (org-id-uuid))
                                      :nodes [])))
@@ -109,14 +109,14 @@
 (defun ord--choose-collection-by-name ()
   "To be passed to interactive form: lets the user choose from among
 the names of collections currently in
-  list-of-org-roam-desktop-collections, and then returns the full
+  ord-collection-list, and then returns the full
   collection of the name selected."
   (let ((extended-list
          (seq-map (lambda (collection)
                     (cons
                      (org-roam-desktop-collection-name collection)
                      collection))
-                  list-of-org-roam-desktop-collections)))
+                  ord-collection-list)))
     (cdr (assoc (completing-read "Choose collection: " extended-list)
                 extended-list))))
 
@@ -263,10 +263,10 @@ derived from magit-section. BUFFER-TITLE is the title of the buffer. The
       (insert json-str))))
 
 (defun ord-close-collection (collection-to-remove)
-  (setq list-of-org-roam-desktop-collections
+  (setq ord-collection-list
         (seq-remove (lambda (collection)
                       (eq collection collection-to-remove))
-                    list-of-org-roam-desktop-collections)))
+                    ord-collection-list)))
 
 (defun ord-save-and-close-collection (collection)
   (interactive
@@ -286,7 +286,7 @@ derived from magit-section. BUFFER-TITLE is the title of the buffer. The
     (with-temp-buffer
       (insert-file-contents file-name)
       (add-to-list
-       'list-of-org-roam-desktop-collections
+       'ord-collection-list
        (ord--collection-from-json (buffer-substring-no-properties
                                    (point-min) (point-max)))))))
 
