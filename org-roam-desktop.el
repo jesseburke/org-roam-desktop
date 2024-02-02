@@ -288,7 +288,6 @@ first 6 digits of its id."
 ;;; org-roam-desktop-top map, to be used anywhere in emacs
 (define-prefix-command 'org-roam-desktop-map)
 
-(global-set-key (kbd "M-d") org-roam-desktop-map)
 (define-key org-roam-desktop-map (kbd "M-c")
             #'org-roam-desktop-create-collection)
 (define-key org-roam-desktop-map (kbd "M-a")
@@ -354,3 +353,5 @@ first 6 digits of its id."
  ;;  :group 'org-roam-desktop)
   
 (provide 'org-roam-desktop)
+
+
