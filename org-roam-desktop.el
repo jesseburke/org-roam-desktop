@@ -50,6 +50,11 @@
 
 (defvar ord-collection-list '())
 
+(defclass ord-node-section (org-roam-node-section)
+  ((keymap :initform 'org-roam-desktop-mode-map))
+  "An `org-roam-node-section' based class, changing the initial keymap
+  of the former.")
+
 (defvar ord-buffer-current-collection nil
   "A buffer local variable: the collection which an a buffer in
    ord-mode is displaying.")
@@ -219,7 +224,7 @@ first 6 digits of its id."
           (seq-do
            (lambda (node-id)
            (when-let ((node (org-roam-node-from-id node-id)))
-             (magit-insert-section section (org-roam-node-section nil t)
+             (magit-insert-section section (ord-node-section nil t)
                (insert (concat (propertize (org-roam-node-title node)
                                            'font-lock-face 'org-roam-title)))
                (magit-insert-heading)
