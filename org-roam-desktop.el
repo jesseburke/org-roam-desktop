@@ -137,7 +137,7 @@
     (when (use-region-p)
       (set-marker min-marker (region-beginning))
       (set-marker max-marker (region-end))
-      (save-excursion 
+      (save-mark-and-excursion 
         (goto-char (marker-position min-marker))
         (let ((old-point (point)))
           (org-next-link)
@@ -257,7 +257,17 @@ first 6 digits of its id."
 (defun ord-mode-entry-section-function-default (node)
   (insert (concat (prin1-to-string node) "\n")))
 
-(setq ord-mode-entry-section-functions (list 'ord-mode-entry-section-function-default))
+(setq ord-mode-entry-section-functions (list
+                                        'ord-mode-entry-section-function-default))
+
+(defun ord--node-id-list-to-node-list (id-list)
+  "Returns list of nodes, sorted by SORT-FN."
+  (let ((node-list ()))
+    (seq-do (lambda (node-id)
+              (when-let ((node (org-roam-node-from-id node-id)))
+                (push node node-list))) id-list)
+    node-list))
+
 
 (defun ord--render-collection-view ()
   (let ((inhibit-read-only t))
@@ -265,13 +275,19 @@ first 6 digits of its id."
     (org-roam-desktop-mode)
     (org-roam-buffer-set-header-line-format
      (org-roam-desktop-collection-name ord-buffer-current-collection))
-    (magit-insert-section (root)
-      (magit-insert-heading)
-      (if-let ((node-ids (org-roam-desktop-collection-nodes
-                          ord-buffer-current-collection)))
-          (seq-do
-           (lambda (node-id)
-             (when-let ((node (org-roam-node-from-id node-id)))
+    (if-let ((node-ids (org-roam-desktop-collection-nodes
+                        ord-buffer-current-collection)))
+        (let* ((node-list (ord--node-id-list-to-node-list node-ids))
+               (sorted-node-list (sort
+                                  node-list
+                                  (lambda (first second)
+                                    (string< (upcase (org-roam-node-title
+                                              first))
+                                             (upcase (org-roam-node-title second)))))))
+          (magit-insert-section (root)
+            (magit-insert-heading)      
+            (seq-do
+             (lambda (node)
                (magit-insert-section section (ord-node-section nil t)
                  (insert (concat (propertize (org-roam-node-title node)
                                              'font-lock-face 'org-roam-title)))
@@ -281,8 +297,8 @@ first 6 digits of its id."
                   (lambda (func)
                     (funcall func node))
                   ord-mode-entry-section-functions)
-                 (insert "\n"))))
-           node-ids)))))
+                 (insert "\n")))
+             sorted-node-list))))))
 
 (defun ord--create-and-display-collection-view (collection)
   (let* ((buffer-name (ord--buffer-name-for-collection collection))
