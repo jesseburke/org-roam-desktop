@@ -248,27 +248,6 @@ first 6 digits of its id."
 
 (setq ord-mode-entry-section-functions (list 'ord-mode-entry-section-function-default))
 
-(setq ord-mode-entry-section-functions
-      (list
-       (lambda (node)
-         (org-roam-backlinks-section
-          node
-          :section-title " Backlinks"
-          :show-backlink-p 'jb/filter-org-roam-backlink--for-no-orls-or-reading
-          :unique t))
-       (lambda (node)
-         (org-roam-backlinks-section
-          node
-          :section-title " Reading backlinks:"
-          :show-backlink-p 'jb/filter-org-roam-backlink--for-reading
-          :unique t))
-       (lambda (node)
-         (org-roam-backlinks-section
-          node
-          :section-title " ORL backlinks:"
-          :show-backlink-p 'jb/filter-org-roam-backlink--for-orl
-          :unique t))))
-
 (defun ord--render-collection-view ()
   (let ((inhibit-read-only t))
     (erase-buffer)
