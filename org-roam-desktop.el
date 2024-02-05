@@ -1,3 +1,4 @@
+;;; -*- lexical-binding: t; -*-
 ;;; org-roam-desktop.el --- tool for inspection and revision of an org-roam zettlekasten.
 
 ;; Author: Jesse Burke <jtb445@gmail.com>
@@ -64,11 +65,12 @@
 ;;; basic functions for collections
 (defun ord-create-collection (collection-name)
   (interactive (list (read-string "name of new collection: " "")))
-  (add-to-list
-   'ord-collection-list
-   (make-org-roam-desktop-collection :name collection-name
+  (let ((new-collection
+         (make-org-roam-desktop-collection :name collection-name
                                      :id (concat "ord-" (org-id-uuid))
                                      :nodes [])))
+    (add-to-list 'ord-collection-list new-collection)
+    new-collection))
 
 (defun ord--close-collection (collection-to-remove)
   (setq ord-collection-list
@@ -76,21 +78,30 @@
                       (eq collection collection-to-remove))
                     ord-collection-list)))
 
-(defun ord--choose-collection-by-name ()
-  "To be passed to interactive form: lets the user choose from among
-the names of collections currently in ord-collection-list, and
-  then returns the full collection of the name selected."
-  (if (= (length ord-collection-list) 1)
+(defun ord--choose-collection-by-name (&optional force-prompt require-match)
+  "To be passed to interactive form, to choose a collection: if there
+  is only one collection loaded, then that is it; otherwise, if
+  the buffer-local variable ORD-BUFFER-CURRENT-COLLECTION is
+  non-nil, use that (it will be in org-mode buffers); otherwise,
+  the user is prompted to choose from among the names of
+  collections currently loaded. If optional argument
+  FORCE-PROMPT is true, then prompt the user no matter what."
+  (if current-prefix-arg (setq force-prompt t))
+  (if (and (not force-prompt) (= (length ord-collection-list) 1))
       (car ord-collection-list)
-    (if ord-buffer-current-collection  ord-buffer-current-collection
-      (let ((extended-list
-             (seq-map (lambda (collection)
-                        (cons
-                         (org-roam-desktop-collection-name collection)
-                         collection))
-                      ord-collection-list)))
-        (cdr (assoc (completing-read "Choose collection: " extended-list)
-                    extended-list))))))
+    (if (and (not force-prompt) ord-buffer-current-collection)  ord-buffer-current-collection
+      (let* ((extended-list
+              (seq-map (lambda (collection)
+                         (cons
+                          (org-roam-desktop-collection-name collection)
+                          collection))
+                       ord-collection-list))
+             (read-text (completing-read "Choose collection: "
+                                         extended-list nil require-match)))
+             (if-let ((chosen-collection (cdr (assoc read-text
+                                                     extended-list))))
+                 chosen-collection
+               (ord-create-collection read-text))))))
 
 (defun ord--add-node-ids-to-collection (node-ids collection)  
   (setf
@@ -345,6 +356,11 @@ first 6 digits of its id."
 ;;; org-roam-desktop-top map, to be used anywhere in emacs
 (define-prefix-command 'org-roam-desktop-map)
 
+(defun ord-close-all-collections ()
+  (interactive)
+  (when (y-or-n-p (format "Close all %d collections?" (length ord-collection-list)))
+    (setq ord-collection-list ())))
+
 (define-key org-roam-desktop-map (kbd "M-c")
             #'ord-create-collection)
 (define-key org-roam-desktop-map (kbd "M-a")
@@ -354,7 +370,7 @@ first 6 digits of its id."
 (define-key org-roam-desktop-map (kbd "M-s") #'ord-save-collection)
 (define-key org-roam-desktop-map (kbd "M-S") #'ord-save-and-close-collection)
 (define-key org-roam-desktop-map (kbd "M-l") #'ord-load-collection)
-
+(define-key org-roam-desktop-map (kbd "M-k") #'ord-close-all-collections)
 
 ;; (define-minor-mode org-roam-desktop-minor-mode
 ;;  "Global minor mode to add nodes to org-roam-desktop collections."
