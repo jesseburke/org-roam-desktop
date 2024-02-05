@@ -27,6 +27,7 @@
 ;;; vars and customizations
 (require 'org-roam)
 (require 'magit-section)
+(require 'cl-lib)
 
 (defgroup org-roam-desktop nil
   "Inspection and revision of org-roam notes."
@@ -91,11 +92,11 @@ the names of collections currently in ord-collection-list, and
         (cdr (assoc (completing-read "Choose collection: " extended-list)
                     extended-list))))))
 
-(defun ord--add-node-id-to-collection (node-id collection)
+(defun ord--add-node-ids-to-collection (node-ids collection)  
   (setf
    (org-roam-desktop-collection-nodes collection)
-   (vconcat (org-roam-desktop-collection-nodes collection)
-            (list node-id))))
+   (cl-delete-duplicates (vconcat (org-roam-desktop-collection-nodes collection)
+                                  node-ids) :test 'equal)))
 
 (defun ord--delete-node-id-from-collection (node-id-to-delete collection)
   (let* ((id-array (org-roam-desktop-collection-nodes collection))
@@ -106,25 +107,54 @@ the names of collections currently in ord-collection-list, and
     (setf (org-roam-desktop-collection-nodes
            ord-buffer-current-collection) new-id-array)))
 
-(defun ord--node-id-at-point ()
-  "If point is on an org-roam link, then return id of that entry;
+(defun ord--get-link-address ()
+  "When point is at an org-link, returns the link address as string."
+  (when (org-in-regexp org-link-bracket-re 1)
+    ;; We do have a link at point. 
+    (match-string-no-properties 1)))
+
+(defun ord--get-id-of-id-link ()
+  (save-excursion
+    (when-let ((link-address (ord--get-link-address)))
+      (if (string= (substring link-address 0 2) "id")
+          (substring link-address 3)))))
+
+(defun ord--links-in-region () 
+  (let ((min-marker (make-marker))
+        (max-marker (make-marker))
+        (return-list ()))
+    (when (use-region-p)
+      (set-marker min-marker (region-beginning))
+      (set-marker max-marker (region-end))
+      (save-excursion 
+        (goto-char (marker-position min-marker))
+        (let ((old-point (point)))
+          (org-next-link)
+          (while (and (< old-point (point)) (< (point) (marker-position max-marker)))
+            (setq old-point (point)) 
+            (when-let ((id (ord--get-id-of-id-link)))
+              (push id return-list))
+            (org-next-link))))
+      return-list)))
+
+(defun ord--node-ids-at-point ()
+  "If region is active, then return id of all links in region. point is on an org-roam link, then return id of that entry;
 otherwise, if in org-roam, org-roam-mode, or org-roam-desktop
 buffer, then return id of entry point is on."
-  (or (jb/get-id-of-id-link)
-      (org-roam-node-id (org-roam-node-at-point))))
-
-(defun ord--node-at-point ()
-  (when-let (id (ord--node-id-at-point))
-    (org-roam-node-from-id id)))
+  (if (and (use-region-p) (ord--links-in-region))
+      (ord--links-in-region)
+    (let ((id (or (ord--get-id-of-id-link)
+                  (org-roam-node-id (org-roam-node-at-point)))))
+      (list id))))
 
 ;;; translate collection repn between class, plist, and json
 (defun ord--collection-to-plist (collection)
-"COLLECTION should be an org-roam-desktop-collection struct. Returns a
+  "COLLECTION should be an org-roam-desktop-collection struct. Returns a
   plist representing that struct."
-(list :name (org-roam-desktop-collection-name collection)
-      :id (org-roam-desktop-collection-id collection)
-      :nodes (vconcat (seq-filter (lambda (id) id) (org-roam-desktop-collection-nodes
-                                           collection)))))
+  (list :name (org-roam-desktop-collection-name collection)
+        :id (org-roam-desktop-collection-id collection)
+        :nodes (vconcat (seq-filter (lambda (id) id) (org-roam-desktop-collection-nodes
+                                                      collection)))))
 
 (defun ord--collection-from-plist (collection-plist)
   "COLLECTION-PLIST should have keys :name, :id, and :nodes. Returns a
@@ -293,14 +323,14 @@ first 6 digits of its id."
 
 (defun ord-add-node-at-point (collection)
   (interactive (list (ord--choose-collection-by-name)))
-  (ord--add-node-id-to-collection (ord--node-id-at-point) collection)
+  (ord--add-node-ids-to-collection (ord--node-ids-at-point) collection)
   (ord-mode-refresh-view))
 
 (defun ord-mode-delete-entry ()
   (interactive)
   "Delete the entry at point from collection."
-  (ord--delete-node-id-from-collection (ord--node-id-at-point)
-                                        ord-buffer-current-collection)
+  (ord--delete-node-id-from-collection (car (ord--node-ids-at-point))
+                                       ord-buffer-current-collection)
   (ord-mode-refresh-view))
 
 (defun ord-mode-add-node ()
@@ -331,7 +361,7 @@ first 6 digits of its id."
             #'ord-mode-show-org-roam-buffer)
 (define-key org-roam-desktop-mode-map (kbd "<RET>")
             (lambda () (interactive)
-              (org-roam-node-visit (ord--node-at-point) t t)))
+              (org-roam-node-visit (org-roam-node-from-id (car (ord--node-ids-at-point))))))
 
 ;;; org-roam-desktop-top map, to be used anywhere in emacs
 (define-prefix-command 'org-roam-desktop-map)
