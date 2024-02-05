@@ -61,13 +61,19 @@
 (put 'ord-buffer-current-collection 'permanent-local t)
 
 ;;; basic functions for collections
-(defun org-roam-desktop-create-collection (collection-name)
+(defun ord-create-collection (collection-name)
   (interactive (list (read-string "name of new collection: " "")))
   (add-to-list
    'ord-collection-list
    (make-org-roam-desktop-collection :name collection-name
                                      :id (concat "ord-" (org-id-uuid))
                                      :nodes [])))
+
+(defun ord--close-collection (collection-to-remove)
+  (setq ord-collection-list
+        (seq-remove (lambda (collection)
+                      (eq collection collection-to-remove))
+                    ord-collection-list)))
 
 (defun ord--choose-collection-by-name ()
   "To be passed to interactive form: lets the user choose from among
@@ -146,6 +152,13 @@ buffer, then return id of entry point is on."
 ;; (ord--collection-from-json (ord--collection-to-json test-collection))
 
 ;;; save, close, and load collections
+
+(defun ord--default-file-name-for-collection (collection)
+  "The name of a file for a collection is its name plus json file extension."
+  (concat   
+   (org-roam-desktop-collection-name collection)   
+   ".json"))
+
 (defun ord-save-collection (collection)
   (interactive
    (list
@@ -162,18 +175,12 @@ buffer, then return id of entry point is on."
     (with-temp-file file-name
       (insert json-str))))
 
-(defun ord-close-collection (collection-to-remove)
-  (setq ord-collection-list
-        (seq-remove (lambda (collection)
-                      (eq collection collection-to-remove))
-                    ord-collection-list)))
-
 (defun ord-save-and-close-collection (collection)
   (interactive
    (list
     (ord--choose-collection-by-name)))
   (ord-save-collection collection)
-  (ord-close-collection collection))
+  (ord--close-collection collection))
 
 (defun ord-load-collection ()
   (interactive)
@@ -206,14 +213,8 @@ first 6 digits of its id."
    (substring (org-roam-desktop-collection-id collection) 5 11)
    ")"))
 
-(defun ord--default-file-name-for-collection (collection)
-  "The name of a file for a collection is its name plus json file extension."
-  (concat   
-   (org-roam-desktop-collection-name collection)   
-   ".json"))
-
 (defun ord-mode-entry-section-function-default (node)
-      (insert (concat (prin1-to-string node) "\n")))
+  (insert (concat (prin1-to-string node) "\n")))
 
 (setq ord-mode-entry-section-functions (list 'ord-mode-entry-section-function-default))
 
@@ -238,14 +239,6 @@ first 6 digits of its id."
           :show-backlink-p 'jb/filter-org-roam-backlink--for-orl
           :unique t))))
 
-(defun ord--create-and-display-collection-view (collection)
-  (let* ((buffer-name (ord--buffer-name-for-collection collection))
-         (buffer (get-buffer-create buffer-name)))        
-    (with-current-buffer buffer      
-      (setq-local ord-buffer-current-collection collection)
-      (ord--render-collection-view))
-    (switch-to-buffer-other-window buffer)))
-
 (defun ord--render-collection-view ()
   (let ((inhibit-read-only t))
     (erase-buffer)
@@ -258,18 +251,26 @@ first 6 digits of its id."
                           ord-buffer-current-collection)))
           (seq-do
            (lambda (node-id)
-           (when-let ((node (org-roam-node-from-id node-id)))
-             (magit-insert-section section (ord-node-section nil t)
-               (insert (concat (propertize (org-roam-node-title node)
-                                           'font-lock-face 'org-roam-title)))
-               (magit-insert-heading)
-               (oset section node node)              
-               (seq-do
-                (lambda (func)
-                  (funcall func node))
-                ord-mode-entry-section-functions)
-               (insert "\n"))))
-         node-ids)))))
+             (when-let ((node (org-roam-node-from-id node-id)))
+               (magit-insert-section section (ord-node-section nil t)
+                 (insert (concat (propertize (org-roam-node-title node)
+                                             'font-lock-face 'org-roam-title)))
+                 (magit-insert-heading)
+                 (oset section node node)              
+                 (seq-do
+                  (lambda (func)
+                    (funcall func node))
+                  ord-mode-entry-section-functions)
+                 (insert "\n"))))
+           node-ids)))))
+
+(defun ord--create-and-display-collection-view (collection)
+  (let* ((buffer-name (ord--buffer-name-for-collection collection))
+         (buffer (get-buffer-create buffer-name)))        
+    (with-current-buffer buffer      
+      (setq-local ord-buffer-current-collection collection)
+      (ord--render-collection-view))
+    (switch-to-buffer-other-window buffer)))
 
 (defun ord-view-collection (collection)
   (interactive (list
@@ -336,7 +337,7 @@ first 6 digits of its id."
 (define-prefix-command 'org-roam-desktop-map)
 
 (define-key org-roam-desktop-map (kbd "M-c")
-            #'org-roam-desktop-create-collection)
+            #'ord-create-collection)
 (define-key org-roam-desktop-map (kbd "M-a")
             #'ord-add-node-at-point)
 (define-key org-roam-desktop-map (kbd "M-v")
@@ -346,13 +347,13 @@ first 6 digits of its id."
 (define-key org-roam-desktop-map (kbd "M-l") #'ord-load-collection)
 
 
- ;; (define-minor-mode org-roam-desktop-minor-mode
- ;;  "Global minor mode to add nodes to org-roam-desktop collections."
- ;;  :lighter " or-desktop"
- ;;  :keymap org-roam-desktop-mode-map
- ;;  :global t
- ;;  :group 'org-roam-desktop)
-  
+;; (define-minor-mode org-roam-desktop-minor-mode
+;;  "Global minor mode to add nodes to org-roam-desktop collections."
+;;  :lighter " or-desktop"
+;;  :keymap org-roam-desktop-mode-map
+;;  :global t
+;;  :group 'org-roam-desktop)
+
 (provide 'org-roam-desktop)
 
 
