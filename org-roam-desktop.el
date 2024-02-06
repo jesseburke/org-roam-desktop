@@ -47,6 +47,30 @@
   :group 'org-roam-desktop
   :type 'function)
 
+(defun ord--default-sort-function (first second)
+  (not (string< (upcase (org-roam-node-title
+                         first))
+                (upcase (org-roam-node-title second)))))
+
+(defcustom ord-mode-sort-function  
+    'ord--default-sort-function
+  "Function that sorts the entries in a collection, before being
+  displayed in an ord-mode buffer."
+  :group 'org-roam-desktop
+  :type 'function)
+
+(setq ord-mode-sort-function
+      (lambda (first second)
+        (if (and (org-roam-node-has-reading-tags-p first)
+                 (not (org-roam-node-has-reading-tags-p second)))
+            nil
+          (if (and (org-roam-node-has-reading-tags-p second)
+                 (not (org-roam-node-has-reading-tags-p first)))
+              1
+            (string< (upcase (org-roam-node-title
+                          first))
+                     (upcase (org-roam-node-title second)))))))
+
 (cl-defstruct org-roam-desktop-collection
   name id nodes)
 
@@ -255,13 +279,14 @@ first 6 digits of its id."
    ")"))
 
 (defun ord-mode-entry-section-function-default (node)
-  (insert (concat (prin1-to-string node) "\n")))
+  (org-roam-node-insert-section
+   :source-node node
+   :point 1))
 
-(setq ord-mode-entry-section-functions (list
+(setq ord-mode-entry-section-functions (list             
                                         'ord-mode-entry-section-function-default))
 
 (defun ord--node-id-list-to-node-list (id-list)
-  "Returns list of nodes, sorted by SORT-FN."
   (let ((node-list ()))
     (seq-do (lambda (node-id)
               (when-let ((node (org-roam-node-from-id node-id)))
@@ -280,24 +305,15 @@ first 6 digits of its id."
         (let* ((node-list (ord--node-id-list-to-node-list node-ids))
                (sorted-node-list (sort
                                   node-list
-                                  (lambda (first second)
-                                    (string< (upcase (org-roam-node-title
-                                              first))
-                                             (upcase (org-roam-node-title second)))))))
+                                  ord-mode-sort-function)))
           (magit-insert-section (root)
             (magit-insert-heading)      
             (seq-do
              (lambda (node)
-               (magit-insert-section section (ord-node-section nil t)
-                 (insert (concat (propertize (org-roam-node-title node)
-                                             'font-lock-face 'org-roam-title)))
-                 (magit-insert-heading)
-                 (oset section node node)              
-                 (seq-do
+               (seq-do
                   (lambda (func)
                     (funcall func node))
-                  ord-mode-entry-section-functions)
-                 (insert "\n")))
+                  ord-mode-entry-section-functions))
              sorted-node-list))))))
 
 (defun ord--create-and-display-collection-view (collection)
@@ -324,7 +340,7 @@ first 6 digits of its id."
   "Refresh the contents of the currently selected org-roam-desktop
   buffer."
   (unless (not (derived-mode-p 'org-roam-desktop-mode))
-    (save-excursion
+    (save-mark-and-excursion
       (ord--render-collection-view))))
 
 (defun ord-add-node-at-point (collection)
@@ -377,6 +393,7 @@ first 6 digits of its id."
   (when (y-or-n-p (format "Close all %d collections?" (length ord-collection-list)))
     (setq ord-collection-list ())))
 
+(global-set-key (kbd "M-d") #'org-roam-desktop-map)
 (define-key org-roam-desktop-map (kbd "M-c")
             #'ord-create-collection)
 (define-key org-roam-desktop-map (kbd "M-a")
@@ -396,5 +413,4 @@ first 6 digits of its id."
 ;;  :group 'org-roam-desktop)
 
 (provide 'org-roam-desktop)
-
 
