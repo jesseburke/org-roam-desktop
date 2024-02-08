@@ -304,7 +304,7 @@ the same time:
       (let* ((fill-prefix (make-string fill-column-number ?/ ))
             (filled-string
              (with-temp-buffer
-               (insert (org-roam-preview-get-contents (org-roam-node-file node)) "\n")
+               (insert (ord-preview-get-contents (org-roam-node-file node)) "\n")
                (indent-region (point-min) (point-max) fill-column-number)
                (buffer-string))))
       (insert (org-roam-fontify-like-in-org-mode filled-string))
@@ -331,18 +331,19 @@ The preview content comes from FILE, and the link as at POINT.")
     (next-line)
     (point)))
 
-(defun ord-preview-visit (file &optional not-other-window)
-  "Visit FILE at POINT and return the visited buffer.
-With OTHER-WINDOW non-nil do so in another window.
-In interactive calls OTHER-WINDOW is set with
+(defun ord-preview-visit (&optional not-other-window)
+  "Visit the node whose preview section point is in; return the
+visited buffer. With OTHER-WINDOW non-nil do so in another
+window. In interactive calls OTHER-WINDOW is set with
 `universal-argument'."
-  (interactive (list (org-roam-buffer-file-at-point 'assert)                     
-                     current-prefix-arg))
-  (let ((relative-point (- (point) (marker-position (oref
-                                                     (magit-section-at) start))))
-        (buf (find-file-noselect file))
-        (display-buffer-fn (if not-other-window                               
-                               #'pop-to-buffer-same-window #'switch-to-buffer-other-window)))
+  (interactive (list current-prefix-arg))
+  (let* ((relative-point (- (point) (marker-position (oref
+                                                     (magit-section-at)
+                                                     start))))
+         (file (oref (magit-section-at) file))
+         (buf (find-file-noselect file))
+         (display-buffer-fn (if not-other-window                               
+                                #'pop-to-buffer-same-window #'switch-to-buffer-other-window)))
     (funcall display-buffer-fn buf)
     (with-current-buffer buf
       (widen)
@@ -350,21 +351,8 @@ In interactive calls OTHER-WINDOW is set with
       (when (org-invisible-p) (org-show-context))
       buf)))
 
-(defun org-roam-preview-default-function ()
-  "Return the preview content at point.
-
-This function returns the all contents under the current
-headline, up to the next headline."
-  (let ((beg (save-excursion
-               (org-roam-end-of-meta-data t)
-               (point)))
-        (end (save-excursion
-               (org-next-visible-heading 1)
-               (point))))
-    (string-trim (buffer-substring-no-properties beg end))))
-
-(defun org-roam-preview-get-contents (file)
-  "Get preview content for FILE at PT."
+(defun ord-preview-get-contents (file)
+  "Get preview content for FILE."
   (save-excursion
     (org-roam-with-temp-buffer file
       (org-with-wide-buffer
@@ -400,7 +388,13 @@ first 6 digits of its id."
 (setq ord-mode-entry-section-functions (list             
                                         'ord-mode-entry-section-function-default))
 
+(defvar ord--node-to-position-plist '()
+  "A buffer local variable: stores where the section of a given node
+  starts in the current buffer.")
+(put 'ord--node-to-position-plist 'permanent-local t)
+
 (defun ord--render-collection-view ()
+  (setq-local ord--node-to-position-plist '())
   (let ((inhibit-read-only t))
     (erase-buffer)
     (ord-mode)
@@ -416,10 +410,13 @@ first 6 digits of its id."
             (magit-insert-heading)      
             (seq-do
              (lambda (node)
+               (setq-local ord--node-to-position-plist
+                     (plist-put ord--node-to-position-plist
+                          (org-roam-node-id node) (point)))
                (seq-do
-                  (lambda (func)
-                    (funcall func node))
-                  ord-mode-entry-section-functions))
+                (lambda (func)
+                  (funcall func node))
+                ord-mode-entry-section-functions))
              sorted-node-list))))))
 
 (defun ord--create-and-display-collection-view (collection)
@@ -462,11 +459,23 @@ first 6 digits of its id."
                                        ord-buffer-current-collection)
   (ord-mode-refresh-view))
 
-(defun ord-mode-add-node ()
-  (interactive)
-  "Add the entry at point to current collection."
-  (ord-add-node-at-point ord-buffer-current-collection)
-  (ord-mode-refresh-view))
+(defun ord-mode-visit-entry (collection)
+  "User can select entry from current collection; after selection
+  point is moved there."
+  (interactive (list (ord--choose-collection)))
+  (let* ((node-ids (ord-collection-nodes collection))
+         (node-ids-and-names (seq-map
+                              (lambda (node-id)
+                                (let ((title (org-roam-node-title
+                                              (org-roam-node-from-id node-id))))
+                                  (cons title node-id)))
+                              node-ids))
+         (selected-name (completing-read "Choose entry: "
+                                  node-ids-and-names nil
+                                  'require-match)))   
+    (if-let ((selected-id (cdr (assoc selected-name
+                                      node-ids-and-names))))
+        (goto-char (plist-get ord--node-to-position-plist selected-id)))))
 
 (defun ord-mode-save-collection ()
   (interactive)
@@ -494,7 +503,9 @@ first 6 digits of its id."
 (define-key ord-mode-map (kbd "t")            
             (lambda () (interactive)
               (other-tab-prefix)
-              (org-roam-node-visit (org-roam-node-from-id (car (ord--node-ids-at-point))))))
+              (org-roam-node-visit (org-roam-node-from-id (car
+                                                           (ord--node-ids-at-point))))))
+(define-key ord-mode-map (kbd "e") #'ord-mode-visit-entry)
 
 
 ;;; org-roam-desktop-top map, to be used anywhere in emacs
