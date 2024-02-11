@@ -79,7 +79,7 @@
 (cl-defstruct ord-collection
   name id nodes)
 
-(defvar ord-collection-list '())
+(defvar ord-collection-list '() "Global list of `loaded` collections.")
 
 (defvar ord-buffer-current-collection nil
   "A buffer local variable: the collection which an a buffer in
@@ -261,7 +261,49 @@ buffer, then return id of entry point is on."
        'ord-collection-list
        (ord--collection-from-json (buffer-substring-no-properties
                                    (point-min) (point-max)))))))
+
+;;; turn collection into org-mode buffer
+;;
+;; - iterate through nodes, creating subentry for each one
+;;   - headline is the node title
+;;   - body is the preview section text
+
+(defun ord-export-collection-to-org-buffer (collection)
+  (interactive
+   (list
+    (ord--choose-collection)))  
+  (let* ((buffer-name (concat (ord--buffer-name-for-collection
+                               collection) ".org"))
+         (buffer (get-buffer-create buffer-name)))
+    (with-current-buffer buffer
+      (setq-local ord-buffer-current-collection collection)
+      (erase-buffer)
+      (org-mode)
+      (org-insert-heading)
+      (insert (ord-collection-name collection))
+      (newline)
+      (let ((line-to-delete (make-marker)))
+        (set-marker line-to-delete (point))
+        (org-insert-subheading 1)        
+        (seq-do
+         (lambda (node-id)
+           (newline)
+           (org-insert-heading)
+           (insert
+            (org-link-make-string
+             (concat "id:" node-id)
+             (org-roam-node-title (org-roam-node-from-id node-id))))
+           (newline 2)
+           (insert (ord-preview-get-contents
+                    (org-roam-node-file (org-roam-node-from-id
+                                         node-id))) "\n")
+           (newline))
+         (ord-collection-nodes collection))
+        (goto-char (marker-position line-to-delete))
+        (kill-line))
+    (switch-to-buffer-other-window buffer))))
   
+
 ;;; viewing a collection
 
 (define-derived-mode ord-mode magit-section-mode "OrgRoamDesktop"
@@ -541,6 +583,7 @@ first 6 digits of its id."
               (org-roam-node-visit (org-roam-node-from-id (car
                                                            (ord--node-ids-at-point))))))
 (define-key ord-mode-map (kbd "e") #'ord-mode-visit-entry)
+(define-key ord-mode-map (kbd "o") #'ord-export-collection-to-org-buffer)
 
 
 ;;; org-roam-desktop-top map, to be used anywhere in emacs
