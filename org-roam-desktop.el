@@ -337,19 +337,54 @@ visited buffer. With OTHER-WINDOW non-nil do so in another
 window. In interactive calls OTHER-WINDOW is set with
 `universal-argument'."
   (interactive (list current-prefix-arg))
-  (let* ((relative-point (- (point) (marker-position (oref
-                                                     (magit-section-at)
-                                                     start))))
-         (file (oref (magit-section-at) file))
-         (buf (find-file-noselect file))
-         (display-buffer-fn (if not-other-window                               
-                                #'pop-to-buffer-same-window #'switch-to-buffer-other-window)))
-    (funcall display-buffer-fn buf)
-    (with-current-buffer buf
-      (widen)
-      (goto-char (+ relative-point (ord--start-of-file-node)))
-      (when (org-invisible-p) (org-show-context))
-      buf)))
+  (if (org-in-regexp org-link-bracket-re 1)
+      (org-open-at-point)
+    (let* ((relative-point (- (point) (marker-position (oref
+                                                        (magit-section-at)
+                                                        start))))
+           (file (oref (magit-section-at) file))
+           (buf (find-file-noselect file))
+           (display-buffer-fn (if not-other-window                               
+                                  #'pop-to-buffer-same-window #'switch-to-buffer-other-window)))
+      (funcall display-buffer-fn buf)
+      (with-current-buffer buf
+        (widen)
+        (goto-char (+ relative-point (ord--start-of-file-node)))
+        (when (org-invisible-p) (org-show-context))
+        buf))))
+
+(defun ord-preview-default-display-function ()
+  "Return the preview content at point.
+
+This function returns the all contents under the current
+headline, up to the next headline."
+  (let ((beg (save-excursion
+               (org-roam-end-of-meta-data t)
+               (point)))
+        (end (save-excursion
+               (org-next-visible-heading 1)
+               (point))))
+    (string-trim (buffer-substring-no-properties beg end))))
+
+(defun ord-preview-full-display-function ()
+  "Return the preview content at point.
+
+This function returns the entire body of the entry."
+  (let ((beg (save-excursion
+               (org-roam-end-of-meta-data t)
+               (point)))
+        (end (point-max)))
+    (string-trim (buffer-substring-no-properties beg end))))
+
+(defcustom ord-preview-display-function #'ord-preview-default-display-function
+  "The preview function to use to populate the Org-roam buffer.
+
+The function takes no arguments, but the point is temporarily set
+to the exact location of the backlink."
+  :group 'org-roam
+  :type 'function)
+
+(setq ord-preview-display-function #'ord-preview-default-display-function)
 
 (defun ord-preview-get-contents (file)
   "Get preview content for FILE."
@@ -357,12 +392,12 @@ window. In interactive calls OTHER-WINDOW is set with
     (org-roam-with-temp-buffer file
       (org-with-wide-buffer
        (goto-char (point-min))
-       (let ((s (funcall org-roam-preview-function)))
+       (let ((s (funcall ord-preview-display-function)))
          (dolist (fn org-roam-preview-postprocess-functions)
            (setq s (funcall fn s)))
          s)))))
 
-
+;;;; setting up the buffer
 (defun ord--buffer-name-for-collection (collection)
   "The name of a buffer for a collection starts with `*ord
 collection: ` plus collection name and the
@@ -435,8 +470,8 @@ first 6 digits of its id."
         (switch-to-buffer-other-window buffer-name)
       (ord--create-and-display-collection-view collection))))
    
-;;; ord-mode-map, used in ord-mode buffers that display
-;;; collections
+;;;; ord-mode-map, used in ord-mode buffers that display
+;;;; collections
 
 (defun ord-mode-refresh-view ()
   (interactive)
