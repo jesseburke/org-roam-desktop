@@ -80,7 +80,7 @@
   (let ((new-collection
          (make-ord-collection :name collection-name
                                      :id (concat "ord-" (org-id-uuid))
-                                     :nodes [])))
+                                     :nodes '())))
     (add-to-list 'ord-collection-list new-collection)
     new-collection))
 
@@ -188,7 +188,7 @@
   "COLLECTION-PLIST should have keys :name, :id, and :nodes. Returns a
   struct of type org-roam-desktop-collection."
   (cl-destructuring-bind (&key name id nodes) collection-plist
-    (make-ord-collection :name name :id id :nodes nodes)))
+    (make-ord-collection :name name :id id :nodes (mapcar 'identity nodes))))
 
 ;; (ord--collection-from-plist (ord--collection-to-plist test-collection))
 
