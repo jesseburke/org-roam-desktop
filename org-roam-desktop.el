@@ -478,7 +478,13 @@ entry, whose heading is the name of the section. Then a subentry
     (ord--choose-collection)))  
   (let* ((buffer-name (concat (ord--buffer-name-for-collection
                                collection) ".org"))
-         (buffer (get-buffer-create buffer-name)))
+         (buffer (get-buffer-create buffer-name))
+         ;; need nodes, as opposed to ids, to get names, to sort.
+         (node-list (ord--node-id-list-to-node-list
+                     (ord-collection-nodes collection))) 
+         (sorted-node-list (sort
+                            node-list
+                            ord-mode-sort-function)))
     (with-current-buffer buffer
       (setq-local ord-buffer-current-collection collection)
       (erase-buffer)
@@ -490,19 +496,18 @@ entry, whose heading is the name of the section. Then a subentry
         (set-marker line-to-delete (point))
         (org-insert-subheading 1)        
         (seq-do
-         (lambda (node-id)
+         (lambda (node)
            (newline)
            (org-insert-heading)
            (insert
             (org-link-make-string
-             (concat "id:" node-id)
-             (org-roam-node-title (org-roam-node-from-id node-id))))
+             (concat "id:" (org-roam-node-id node))
+             (org-roam-node-title node)))
            (newline 2)
            (insert (ord-preview-get-contents
-                    (org-roam-node-file (org-roam-node-from-id
-                                         node-id))) "\n")
+                    (org-roam-node-file node)) "\n")
            (newline))
-         (ord-collection-nodes collection))
+         sorted-node-list)
         (goto-char (marker-position line-to-delete))
         (kill-line))
       (switch-to-buffer-other-window buffer))))
