@@ -512,35 +512,40 @@ entry, whose heading is the name of the section. Then a subentry
         (kill-line))
       (switch-to-buffer-other-window buffer))))
 
-;; (defun ord-export-collection-to-org-list (collection)
-;;   (interactive
-;;    (list
-;;     (ord--choose-collection)))  
-;;   (let* ((buffer-name (concat (ord--buffer-name-for-collection
-;;                                collection) "-list" ".org"))
-;;          (buffer (get-buffer-create buffer-name)))
-;;     (with-current-buffer buffer
-;;       (setq-local ord-buffer-current-collection collection)
-;;       (erase-buffer)
-;;       (org-mode)
-;;       (let ((first-node-id (car (ord-collection-nodes collection))))
-;;         (insert
-;;          (concat "- "
-;;                  (org-link-make-string
-;;                   (concat "id:" first-node-id)
-;;                   (org-roam-node-title (org-roam-node-from-id
-;;                                         first-node-id))))))
-;;       (newline)
-;;       (seq-do
-;;        (lambda (node-id)         
-;;          (org-list-insert-item)
-;;          (insert
-;;             (org-link-make-string
-;;              (concat "id:" node-id)
-;;              (org-roam-node-title (org-roam-node-from-id node-id))))
-;;            (newline))
-;;          (cdr (ord-collection-nodes collection))))
-;;     (switch-to-buffer-other-window buffer)))
+(defun ord-export-collection-to-org-list (collection)
+  (interactive
+   (list
+    (ord--choose-collection)))
+  (let* ((buffer-name (concat (ord--buffer-name-for-collection
+                               collection) "-list" ".org"))
+         (buffer (get-buffer-create buffer-name))
+          ;; need nodes, as opposed to ids, to get names, to sort.
+         (node-list (ord--node-id-list-to-node-list
+                     (ord-collection-nodes collection))) 
+         (sorted-node-list (sort
+                            node-list
+                            ord-mode-sort-function)))
+    (with-current-buffer buffer
+      (setq-local ord-buffer-current-collection collection)
+      (erase-buffer)
+      (org-mode)
+      (let ((first-node (car sorted-node-list)))
+        (insert
+         (concat "- "
+                 (org-link-make-string
+                  (concat "id:" (org-roam-node-id first-node))
+                  (org-roam-node-title first-node)))))
+      (newline)
+      (seq-do
+       (lambda (node)         
+         (org-insert-item)
+          (insert
+            (org-link-make-string
+             (concat "id:" (org-roam-node-id node))
+             (org-roam-node-title node)))         
+           (newline))
+         (cdr sorted-node-list)))
+    (switch-to-buffer-other-window buffer)))
 
    
 ;;; ord-mode-map, used in ord-mode buffers that display
