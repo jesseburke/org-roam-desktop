@@ -33,7 +33,7 @@
 (defgroup org-roam-desktop nil
   "Inspection and revision of org-roam notes."
   :group 'org-roam
-  :prefix "org-roam-desktop-"
+  :prefix "ord-"
   :link '(url-link :tag "Github" "https://github.com/jesseburke/org-roam-desktop"))
 
 (defcustom ord-save-dir "ord-collections/"
@@ -58,18 +58,6 @@
   displayed in an ord-mode buffer."
   :group 'org-roam-desktop
   :type 'function)
-
-(setq ord-mode-sort-function
-      (lambda (first second)
-        (if (and (org-roam-node-has-reading-tags-p first)
-                 (not (org-roam-node-has-reading-tags-p second)))
-            nil
-          (if (and (org-roam-node-has-reading-tags-p second)
-                 (not (org-roam-node-has-reading-tags-p first)))
-              1
-            (string< (upcase (org-roam-node-title
-                          first))
-                     (upcase (org-roam-node-title second)))))))
 
 (defface ord-entry-title
   '((t :weight bold))
@@ -96,13 +84,8 @@
     (add-to-list 'ord-collection-list new-collection)
     new-collection))
 
-(defun ord--close-collection (collection-to-remove)
-  (setq ord-collection-list
-        (seq-remove (lambda (collection)
-                      (eq collection collection-to-remove))
-                    ord-collection-list)))
-
-(defun ord--choose-collection (&optional force-prompt require-match)
+(cl-defun ord--choose-collection (&optional force-prompt require-match
+  (prompt-string "Choose collection: "))
   "To be passed to interactive form, to choose a collection: if there
   is only one collection loaded, then that is it; otherwise, if
   the buffer-local variable ORD-BUFFER-CURRENT-COLLECTION is
@@ -120,27 +103,28 @@
                           (ord-collection-name collection)
                           collection))
                        ord-collection-list))
-             (read-text (completing-read "Choose collection: "
+             (read-text (completing-read prompt-string
                                          extended-list nil require-match)))
              (if-let ((chosen-collection (cdr (assoc read-text
                                                      extended-list))))
                  chosen-collection
                (ord-create-collection read-text))))))
 
-(defun ord--add-node-ids-to-collection (node-ids collection)  
+(defun ord--add-node-ids-to-collection (node-ids collection)
+  "NODE-IDS is a list "
   (setf
    (ord-collection-nodes collection)
-   (cl-delete-duplicates (vconcat (ord-collection-nodes collection)
+   (cl-delete-duplicates (append (ord-collection-nodes collection)
                                   node-ids) :test 'equal)))
 
 (defun ord--delete-node-id-from-collection (node-id-to-delete collection)
-  (let* ((id-array (ord-collection-nodes collection))
-         (new-id-array
+  (let* ((id-list (ord-collection-nodes collection))
+         (new-id-list
           (seq-filter (lambda (node-id)
                         (not (string= node-id node-id-to-delete)))
-                      id-array)))
+                      id-list)))
     (setf (ord-collection-nodes
-           ord-buffer-current-collection) new-id-array)))
+           ord-buffer-current-collection) new-id-list)))
 
 (defun ord--get-link-address ()
   "When point is at an org-link, returns the link address as string."
@@ -172,15 +156,21 @@
             (org-next-link))))
       return-list)))
 
+
 (defun ord--node-ids-at-point ()
-  "If region is active, then return id of all links in region. point is on an org-roam link, then return id of that entry;
-otherwise, if in org-roam, org-roam-mode, or org-roam-desktop
-buffer, then return id of entry point is on."
+  "If region is active, and there are links in the region, returns ids
+  of links in region; else, if point is on an org-roam link, then
+  return that id; else, if in a magit-section buffer where
+  org-roam-node-at-point returns non-nil, returns id of entry; else,
+  prompts user to chooes an entry, and returns id of that."
   (if (and (use-region-p) (ord--links-in-region))
       (ord--links-in-region)
-    (let ((id (or (ord--get-id-of-id-link)
-                  (org-roam-node-id (org-roam-node-at-point)))))
-      (list id))))
+    (if (ord--get-id-of-id-link)
+        (list (ord--get-id-of-id-link))
+      (if (org-roam-node-at-point)
+          (list (org-roam-node-id (org-roam-node-at-point)))
+        (ord-choose-node-id)))))
+
 
 ;;; translate collection repn between class, plist, and json
 (defun ord--collection-to-plist (collection)
@@ -240,12 +230,12 @@ buffer, then return id of entry point is on."
     (with-temp-file file-name
       (insert json-str))))
 
-(defun ord-save-and-close-collection (collection)
-  (interactive
-   (list
-    (ord--choose-collection)))
-  (ord-save-collection collection)
-  (ord--close-collection collection))
+(defun ord-close-collection (collection-to-remove)
+  (interactive (list (ord--choose-collection nil t "Collection to close?: ")))
+  (setq ord-collection-list
+        (seq-remove (lambda (collection)
+                      (eq collection collection-to-remove))
+                    ord-collection-list)))
 
 (defun ord-load-collection ()
   (interactive)
@@ -261,49 +251,7 @@ buffer, then return id of entry point is on."
        'ord-collection-list
        (ord--collection-from-json (buffer-substring-no-properties
                                    (point-min) (point-max)))))))
-
-;;; turn collection into org-mode buffer
-;;
-;; - iterate through nodes, creating subentry for each one
-;;   - headline is the node title
-;;   - body is the preview section text
-
-(defun ord-export-collection-to-org-buffer (collection)
-  (interactive
-   (list
-    (ord--choose-collection)))  
-  (let* ((buffer-name (concat (ord--buffer-name-for-collection
-                               collection) ".org"))
-         (buffer (get-buffer-create buffer-name)))
-    (with-current-buffer buffer
-      (setq-local ord-buffer-current-collection collection)
-      (erase-buffer)
-      (org-mode)
-      (org-insert-heading)
-      (insert (ord-collection-name collection))
-      (newline)
-      (let ((line-to-delete (make-marker)))
-        (set-marker line-to-delete (point))
-        (org-insert-subheading 1)        
-        (seq-do
-         (lambda (node-id)
-           (newline)
-           (org-insert-heading)
-           (insert
-            (org-link-make-string
-             (concat "id:" node-id)
-             (org-roam-node-title (org-roam-node-from-id node-id))))
-           (newline 2)
-           (insert (ord-preview-get-contents
-                    (org-roam-node-file (org-roam-node-from-id
-                                         node-id))) "\n")
-           (newline))
-         (ord-collection-nodes collection))
-        (goto-char (marker-position line-to-delete))
-        (kill-line))
-    (switch-to-buffer-other-window buffer))))
   
-
 ;;; viewing a collection
 
 (define-derived-mode ord-mode magit-section-mode "OrgRoamDesktop"
@@ -452,6 +400,8 @@ first 6 digits of its id."
    ")"))
 
 (defun ord--node-id-list-to-node-list (id-list)
+  "ID-LIST is a sequence of id's; returns a list of nodes corresponding
+to the ids."
   (let ((node-list ()))
     (seq-do (lambda (node-id)
               (when-let ((node (org-roam-node-from-id node-id)))
@@ -511,9 +461,82 @@ first 6 digits of its id."
     (if (get-buffer buffer-name)
         (switch-to-buffer-other-window buffer-name)
       (ord--create-and-display-collection-view collection))))
+
+
+;;; turn collection into org-mode buffer
+
+(defun ord-export-collection-to-org-buffer (collection)
+  "Creates an org-mode buffer displaying COLLECTION. Will be one top level
+entry, whose heading is the name of the section. Then a subentry
+  for each node in COLLECTION. For the subentries, the headline
+  is the node title and the body is the preview section text."
+  (interactive
+   (list
+    (ord--choose-collection)))  
+  (let* ((buffer-name (concat (ord--buffer-name-for-collection
+                               collection) ".org"))
+         (buffer (get-buffer-create buffer-name)))
+    (with-current-buffer buffer
+      (setq-local ord-buffer-current-collection collection)
+      (erase-buffer)
+      (org-mode)
+      (org-insert-heading)
+      (insert (ord-collection-name collection))
+      (newline)
+      (let ((line-to-delete (make-marker)))
+        (set-marker line-to-delete (point))
+        (org-insert-subheading 1)        
+        (seq-do
+         (lambda (node-id)
+           (newline)
+           (org-insert-heading)
+           (insert
+            (org-link-make-string
+             (concat "id:" node-id)
+             (org-roam-node-title (org-roam-node-from-id node-id))))
+           (newline 2)
+           (insert (ord-preview-get-contents
+                    (org-roam-node-file (org-roam-node-from-id
+                                         node-id))) "\n")
+           (newline))
+         (ord-collection-nodes collection))
+        (goto-char (marker-position line-to-delete))
+        (kill-line))
+      (switch-to-buffer-other-window buffer))))
+
+;; (defun ord-export-collection-to-org-list (collection)
+;;   (interactive
+;;    (list
+;;     (ord--choose-collection)))  
+;;   (let* ((buffer-name (concat (ord--buffer-name-for-collection
+;;                                collection) "-list" ".org"))
+;;          (buffer (get-buffer-create buffer-name)))
+;;     (with-current-buffer buffer
+;;       (setq-local ord-buffer-current-collection collection)
+;;       (erase-buffer)
+;;       (org-mode)
+;;       (let ((first-node-id (car (ord-collection-nodes collection))))
+;;         (insert
+;;          (concat "- "
+;;                  (org-link-make-string
+;;                   (concat "id:" first-node-id)
+;;                   (org-roam-node-title (org-roam-node-from-id
+;;                                         first-node-id))))))
+;;       (newline)
+;;       (seq-do
+;;        (lambda (node-id)         
+;;          (org-list-insert-item)
+;;          (insert
+;;             (org-link-make-string
+;;              (concat "id:" node-id)
+;;              (org-roam-node-title (org-roam-node-from-id node-id))))
+;;            (newline))
+;;          (cdr (ord-collection-nodes collection))))
+;;     (switch-to-buffer-other-window buffer)))
+
    
-;;;; ord-mode-map, used in ord-mode buffers that display
-;;;; collections
+;;; ord-mode-map, used in ord-mode buffers that display
+;;; collections
 
 (defun ord-mode-refresh-view ()
   (interactive)
@@ -536,7 +559,7 @@ first 6 digits of its id."
                                        ord-buffer-current-collection)
   (ord-mode-refresh-view))
 
-(defun ord-mode-visit-entry (collection)
+(defun ord-mode-choose-entry-from-collection (collection)
   "User can select entry from current collection; after selection
   point is moved there."
   (interactive (list (ord--choose-collection)))
@@ -564,6 +587,19 @@ first 6 digits of its id."
   "Show the org-roam-mode buffer for entry point is on."
   (org-roam-buffer-display-dedicated (org-roam-node-at-point)))
 
+
+(defun ord-close-collection-and-buffer ()
+  (interactive)
+  (when (y-or-n-p "Are you sure you want to close this collection?")
+    (let ((inhibit-read-only t))
+      (ord-close-collection ord-buffer-current-collection)
+      (kill-this-buffer))))
+
+(defun ord-view-other-collection ()
+  (interactive)
+  (let ((collection (ord--choose-collection t)))
+    (ord-view-collection collection)))
+
 (define-key ord-mode-map (kbd "g")
             #'ord-mode-refresh-view)
 (define-key ord-preview-map [remap org-roam-buffer-refresh] #'ord-mode-refresh-view)
@@ -582,11 +618,14 @@ first 6 digits of its id."
               (other-tab-prefix)
               (org-roam-node-visit (org-roam-node-from-id (car
                                                            (ord--node-ids-at-point))))))
-(define-key ord-mode-map (kbd "e") #'ord-mode-visit-entry)
-(define-key ord-mode-map (kbd "o") #'ord-export-collection-to-org-buffer)
+(define-key ord-mode-map (kbd "e") #'ord-mode-choose-entry-from-collection)
+(define-key ord-mode-map (kbd "o")
+            #'ord-export-collection-to-org-buffer)
+(define-key ord-mode-map (kbd "w") #'ord-close-collection-and-buffer)
+(define-key ord-mode-map (kbd "v") #'ord-view-other-collection)
 
 
-;;; org-roam-desktop-top map, to be used anywhere in emacs
+;;; ord-map, to be used anywhere in emacs
 (define-prefix-command 'ord-map)
 
 (defun ord-close-all-collections ()
@@ -602,16 +641,8 @@ first 6 digits of its id."
 (define-key ord-map (kbd "M-v")
             #'ord-view-collection)
 (define-key ord-map (kbd "M-s") #'ord-save-collection)
-(define-key ord-map (kbd "M-S") #'ord-save-and-close-collection)
 (define-key ord-map (kbd "M-l") #'ord-load-collection)
 (define-key ord-map (kbd "M-k") #'ord-close-all-collections)
-
-;; (define-minor-mode org-roam-desktop-minor-mode
-;;  "Global minor mode to add nodes to org-roam-desktop collections."
-;;  :lighter " or-desktop"
-;;  :keymap ord-mode-map
-;;  :global t
-;;  :group 'org-roam-desktop)
 
 (provide 'org-roam-desktop)
 
