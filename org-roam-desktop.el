@@ -156,6 +156,9 @@
             (org-next-link))))
       return-list)))
 
+(defun ord-choose-node-id ()  
+  (let ((node (org-roam-node-read nil nil nil t)))
+    (list (org-roam-node-id node))))
 
 (defun ord--node-ids-at-point ()
   "If region is active, and there are links in the region, returns ids
@@ -587,6 +590,11 @@ entry, whose heading is the name of the section. Then a subentry
   "Show the org-roam-mode buffer for entry point is on."
   (org-roam-buffer-display-dedicated (org-roam-node-at-point)))
 
+(defun ord-choose-and-add-node (collection)
+  (interactive (list (ord--choose-collection)))
+  (let* ((node (org-roam-node-read "Entry to add: " nil nil t))
+         (node-id (org-roam-node-id node)))
+    (ord--add-node-ids-to-collection (list node-id))))
 
 (defun ord-close-collection-and-buffer ()
   (interactive)
