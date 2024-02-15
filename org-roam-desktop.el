@@ -111,11 +111,14 @@
                (ord-create-collection read-text))))))
 
 (defun ord--add-node-ids-to-collection (node-ids collection)
-  "NODE-IDS is a list "
-  (setf
-   (ord-collection-nodes collection)
-   (cl-delete-duplicates (append (ord-collection-nodes collection)
-                                  node-ids) :test 'equal)))
+  "NODE-IDS is a list. Returns nil if no id's were added (i.e., they
+all were already in the collection), else returns t."
+  (let* ((old-node-list (ord-collection-nodes collection))
+         (new-node-list (cl-delete-duplicates (append old-node-list node-ids) :test 'equal))
+         (already-there (= (length old-node-list) (length new-node-list))))
+    (if already-there nil
+      (setf (ord-collection-nodes collection) new-node-list)
+      t)))
 
 (defun ord--delete-node-id-from-collection (node-id-to-delete collection)
   (let* ((id-list (ord-collection-nodes collection))
@@ -160,20 +163,22 @@
   (let ((node (org-roam-node-read nil nil nil t)))
     (list (org-roam-node-id node))))
 
-(defun ord--node-ids-at-point ()
+(defun ord--node-ids-at-point (&optional force-prompt)
   "If region is active, and there are links in the region, returns ids
   of links in region; else, if point is on an org-roam link, then
   return that id; else, if in a magit-section buffer where
   org-roam-node-at-point returns non-nil, returns id of entry; else,
-  prompts user to chooes an entry, and returns id of that."
-  (if (and (use-region-p) (ord--links-in-region))
-      (ord--links-in-region)
-    (if (ord--get-id-of-id-link)
-        (list (ord--get-id-of-id-link))
-      (if (org-roam-node-at-point)
-          (list (org-roam-node-id (org-roam-node-at-point)))
-        (ord-choose-node-id)))))
-
+  prompts user to chooes an entry, and returns id of that. If
+  FORCE-PROMPT is true, then prompt no matter what."
+  (if force-prompt
+      (ord-choose-node-id)
+    (if (and (use-region-p) (ord--links-in-region))
+        (ord--links-in-region)
+      (if (ord--get-id-of-id-link)
+          (list (ord--get-id-of-id-link))
+        (if (org-roam-node-at-point)
+            (list (org-roam-node-id (org-roam-node-at-point)))
+          (ord-choose-node-id))))))
 
 ;;; translate collection repn between class, plist, and json
 (defun ord--collection-to-plist (collection)
@@ -562,7 +567,10 @@ entry, whose heading is the name of the section. Then a subentry
 
 (defun ord-add-node-at-point (collection)
   (interactive (list (ord--choose-collection)))
-  (ord--add-node-ids-to-collection (ord--node-ids-at-point) collection)
+  (unless (ord--add-node-ids-to-collection (ord--node-ids-at-point)
+                                           collection)
+    (ord--add-node-ids-to-collection (ord--node-ids-at-point t)
+                                           collection))    
   (ord-mode-refresh-view))
 
 (defun ord-mode-delete-entry ()
