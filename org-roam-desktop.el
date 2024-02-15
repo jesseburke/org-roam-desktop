@@ -627,6 +627,13 @@ entry, whose heading is the name of the section. Then a subentry
   (let ((collection (ord--choose-collection t)))
     (ord-view-collection collection)))
 
+(defun ord-rename-collection (collection)  
+  (interactive (list (ord--choose-collection)))
+  (let ((new-name (read-string "New name for collection: "
+                               (ord-collection-name collection))))
+    (setf (ord-collection-name collection) new-name))
+  (ord-mode-refresh-view))
+
 (define-key ord-mode-map (kbd "g")
             #'ord-mode-refresh-view)
 (define-key ord-preview-map [remap org-roam-buffer-refresh] #'ord-mode-refresh-view)
@@ -650,6 +657,7 @@ entry, whose heading is the name of the section. Then a subentry
             #'ord-export-collection-to-org-buffer)
 (define-key ord-mode-map (kbd "w") #'ord-close-collection-and-buffer)
 (define-key ord-mode-map (kbd "v") #'ord-view-other-collection)
+(define-key ord-mode-map (kbd "r") #'ord-rename-collection)
 
 
 ;;; ord-map, to be used anywhere in emacs
@@ -670,6 +678,7 @@ entry, whose heading is the name of the section. Then a subentry
 (define-key ord-map (kbd "M-s") #'ord-save-collection)
 (define-key ord-map (kbd "M-l") #'ord-load-collection)
 (define-key ord-map (kbd "M-k") #'ord-close-all-collections)
+(define-key ord-map (kbd "M-e") #'ord-mode-choose-entry-from-collection)
 
 (provide 'org-roam-desktop)
 
