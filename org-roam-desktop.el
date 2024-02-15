@@ -561,9 +561,10 @@ entry, whose heading is the name of the section. Then a subentry
   "Refresh the contents of the currently selected org-roam-desktop
   buffer."
   (unless (not (derived-mode-p 'ord-mode))
-    (save-mark-and-excursion
+    (let ((point (point)))
         (magit-section-cache-visibility (magit-current-section))
-        (ord--render-collection-view))))
+        (ord--render-collection-view)
+        (goto-char point))))
 
 (defun ord-add-node-at-point (collection)
   (interactive (list (ord--choose-collection)))
