@@ -307,6 +307,7 @@ the same time:
                (buffer-string))))
       (insert (org-roam-fontify-like-in-org-mode filled-string))
       (oset section file (org-roam-node-file node))
+      (oset section node node)
       (insert ?\n)))))
 
 ;;;; Preview
@@ -314,10 +315,9 @@ the same time:
 (set-keymap-parent 'ord-preview-map ord-mode-map)
 (define-key ord-preview-map (kbd "<RET>") 'ord-preview-visit)
   
-(defclass ord-preview-section (magit-section)
+(defclass ord-preview-section (org-roam-node-section)
   ((keymap :initform 'ord-preview-map)
-   (file :initform nil)
-   (point :initform nil))
+   (file :initform nil))
   "A `magit-section' used by `org-roam-mode' to contain preview content.
 The preview content comes from FILE, and the link as at POINT.")
 
