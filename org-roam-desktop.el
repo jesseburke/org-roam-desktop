@@ -48,6 +48,7 @@
   :type 'function)
 
 (defun ord--default-sort-function (first second)
+  "FIRST and SECOND are nodes."
   (not (string< (upcase (org-roam-node-title
                          first))
                 (upcase (org-roam-node-title second)))))
@@ -182,7 +183,9 @@ all were already in the collection), else returns t."
             (list (org-roam-node-id (org-roam-node-at-point)))
           (ord-choose-node-id))))))
 
-;;; translate collection repn between class, plist, and json
+;;; save, close, and load collections
+
+;;;; translate collection between struct, plist, and json
 (defun ord--collection-to-plist (collection)
   "COLLECTION should be an ord-collection struct. Returns a
   plist representing that struct."
@@ -216,7 +219,7 @@ all were already in the collection), else returns t."
 
 ;; (ord--collection-from-json (ord--collection-to-json test-collection))
 
-;;; save, close, and load collections
+;;;; save, close, and load functions
 
 (defun ord--default-file-name-for-collection (collection)
   "The name of a file for a collection is its name plus json file extension."
@@ -262,7 +265,7 @@ all were already in the collection), else returns t."
        (ord--collection-from-json (buffer-substring-no-properties
                                    (point-min) (point-max)))))))
   
-;;; viewing a collection
+;;; viewing collections
 
 (define-derived-mode ord-mode magit-section-mode "OrgRoamDesktop"
   "Major mode for displaying collection of org-roam nodes.")
@@ -312,7 +315,7 @@ the same time:
       (oset section node node)
       (insert ?\n)))))
 
-;;;; Preview
+;;;; preview sections, mostly copied from org-roam
 (define-prefix-command 'ord-preview-map)
 (set-keymap-parent 'ord-preview-map ord-mode-map)
 (define-key ord-preview-map (kbd "<RET>") 'ord-preview-visit)
@@ -400,7 +403,7 @@ to the exact location of the backlink."
            (setq s (funcall fn s)))
          s)))))
 
-;;;; setting up the buffer
+;;;; rendering the buffer
 (defun ord--buffer-name-for-collection (collection)
   "The name of a buffer for a collection starts with `*ord
 collection: ` plus collection name and the
@@ -430,7 +433,7 @@ to the ids."
 
 (defvar ord--node-to-position-plist '()
   "A buffer local variable: stores where the section of a given node
-  starts in the current buffer.")
+  starts in the current buffer. Used for moving point to a given section.")
 (put 'ord--node-to-position-plist 'permanent-local t)
 
 (defun ord--render-collection-view ()
@@ -476,7 +479,11 @@ to the ids."
       (ord--create-and-display-collection-view collection))))
 
 
-;;; turn collection into org-mode buffer
+;;; expand collection
+
+
+
+;;; export collection into org-mode buffer
 
 (defun ord-export-collection-to-org-buffer (collection)
   "Creates an org-mode buffer displaying COLLECTION. Will be one top level
