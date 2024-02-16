@@ -75,6 +75,10 @@
    ord-mode is displaying.")
 (put 'ord-buffer-current-collection 'permanent-local t)
 
+(defvar ord--undo-history-stack '()
+  "A buffer local variable: needed for undo functionality.")
+(put 'ord--undo-history-stack 'permanent-local t)
+
 ;;; org(-roam) utility functions
 
 (defun ord--node-id-list-to-node-list (id-list)
@@ -607,6 +611,7 @@ entry, whose heading is the name of the section. Then a subentry
 
 (defun ord-add-node-at-point (collection)
   (interactive (list (ord--choose-collection)))
+  (push (ord-collection-nodes collection) ord--undo-history-stack)
   (unless (ord--add-node-ids-to-collection (ord--node-ids-at-point)
                                            collection)
     (ord--add-node-ids-to-collection (ord--node-ids-at-point t)
@@ -616,6 +621,7 @@ entry, whose heading is the name of the section. Then a subentry
 (defun ord-mode-delete-entry ()
   (interactive)
   "Delete the entry at point from collection."
+  (push (ord-collection-nodes ord-buffer-current-collection) ord--undo-history-stack)
   (ord--delete-node-id-from-collection (car (ord--node-ids-at-point))
                                        ord-buffer-current-collection)
   (ord-mode-refresh-view))
@@ -624,6 +630,7 @@ entry, whose heading is the name of the section. Then a subentry
   "User can select entry from current collection; after selection
   point is moved there."
   (interactive (list (ord--choose-collection)))
+  (push (ord-collection-nodes collection) ord--undo-history-stack)
   (let* ((node-ids (ord-collection-nodes collection))
          (node-ids-and-names (seq-map
                               (lambda (node-id)
@@ -658,6 +665,7 @@ entry, whose heading is the name of the section. Then a subentry
 
 (defun ord-choose-and-add-node (collection)
   (interactive (list (ord--choose-collection)))
+  (push (ord-collection-nodes collection) ord--undo-history-stack)
   (let* ((node (org-roam-node-read "Entry to add: " nil nil t))
          (node-id (org-roam-node-id node)))
     (ord--add-node-ids-to-collection (list node-id))))
@@ -679,6 +687,12 @@ entry, whose heading is the name of the section. Then a subentry
   (let ((new-name (read-string "New name for collection: "
                                (ord-collection-name collection))))
     (setf (ord-collection-name collection) new-name))
+  (ord-mode-refresh-view))
+
+(defun ord-undo ()
+  (interactive)
+  (setf (ord-collection-nodes ord-buffer-current-collection)
+        (pop ord--undo-history-stack))
   (ord-mode-refresh-view))
 
 ;;;; expand collection       
@@ -741,12 +755,14 @@ should be: (SHORT-ANSWER HELP-MESSAGE EXPAND-FUNCTION), where
               (other-tab-prefix)
               (org-roam-node-visit (org-roam-node-from-id (car
                                                            (ord--node-ids-at-point))))))
-(define-key ord-mode-map (kbd "e") #'ord-mode-choose-entry-from-collection)
+(define-key ord-mode-map (kbd "c") #'ord-mode-choose-entry-from-collection)
 (define-key ord-mode-map (kbd "o")
             #'ord-export-collection-to-org-buffer)
 (define-key ord-mode-map (kbd "w") #'ord-close-collection-and-buffer)
 (define-key ord-mode-map (kbd "v") #'ord-view-other-collection)
 (define-key ord-mode-map (kbd "r") #'ord-rename-collection)
+(define-key ord-mode-map (kbd "e") #'ord-expand-collection)
+(define-key ord-mode-map (kbd "u") #'ord-undo)
 
 
 ;;; ord-map, to be used anywhere in emacs
