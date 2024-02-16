@@ -143,7 +143,12 @@ to the nodes."
     (goto-char (ord--start-of-file-node))
     (let ((beg (point))
           (end (point-max)))
-      (ord--node-id-list-to-node-list (ord--links-in-region beg end)))))
+      (ord--links-in-region beg end))))
+
+(defun ord--get-backlink-ids (node)
+  (seq-map (lambda (backlink)
+             (org-roam-node-id (org-roam-backlink-source-node backlink)))
+           (org-roam-backlinks-get node :unique t)))
 
 ;;; basic functions for collections
 (defun ord-create-collection (collection-name)
@@ -187,10 +192,10 @@ to the nodes."
   "NODE-IDS is a list. Returns nil if no id's were added (i.e., they
 all were already in the collection), else returns t."
   (let* ((old-node-list (ord-collection-nodes collection))
-         (new-node-list (cl-delete-duplicates (append old-node-list node-ids) :test 'equal))
-         (already-there (= (length old-node-list) (length new-node-list))))
+         (new-node-id-list (cl-delete-duplicates (append old-node-list node-ids) :test 'equal))
+         (already-there (= (length old-node-list) (length new-node-id-list))))
     (if already-there nil
-      (setf (ord-collection-nodes collection) new-node-list)
+      (setf (ord-collection-nodes collection) new-node-id-list)
       t)))
 
 (defun ord--delete-node-id-from-collection (node-id-to-delete collection)
@@ -465,7 +470,11 @@ first 6 digits of its id."
     (erase-buffer)
     (ord-mode)
     (org-roam-buffer-set-header-line-format
-     (ord-collection-name ord-buffer-current-collection))
+     (concat (ord-collection-name ord-buffer-current-collection) 
+             " ("
+             (number-to-string (length (ord-collection-nodes
+                                        ord-buffer-current-collection)))
+             " entries)"))
     (if-let ((node-ids (ord-collection-nodes
                         ord-buffer-current-collection)))
         (let* ((node-list (ord--node-id-list-to-node-list node-ids))
@@ -500,11 +509,6 @@ first 6 digits of its id."
     (if (get-buffer buffer-name)
         (switch-to-buffer-other-window buffer-name)
       (ord--create-and-display-collection-view collection))))
-
-
-;;; expand collection
-
-
 
 ;;; export collection into org-mode buffer
 
@@ -589,9 +593,7 @@ entry, whose heading is the name of the section. Then a subentry
          (cdr sorted-node-list)))
     (switch-to-buffer-other-window buffer)))
 
-   
-;;; ord-mode-map, used in ord-mode buffers that display
-;;; collections
+;;; commands used in ord-mode buffers (where collections are displayed)   
 
 (defun ord-mode-refresh-view ()
   (interactive)
@@ -634,7 +636,15 @@ entry, whose heading is the name of the section. Then a subentry
                                   'require-match)))   
     (if-let ((selected-id (cdr (assoc selected-name
                                       node-ids-and-names))))
-        (goto-char (plist-get ord--node-to-position-plist selected-id)))))
+        (goto-char (plist-get ord--node-to-position-plist
+                              selected-id)))))
+
+(defun ord-mode-duplicate-collection (collection)  
+  (interactive (list (ord--choose-collection)))
+  (let* ((new-name (read-string "Name for new collection: "
+                               (ord-collection-name collection)))
+         (new-collection (ord-create-collection new-name)))
+    (ord--add-node-ids-to-collection (ord-collection-nodes collection) new-collection)))
 
 (defun ord-mode-save-collection ()
   (interactive)
@@ -670,6 +680,48 @@ entry, whose heading is the name of the section. Then a subentry
                                (ord-collection-name collection))))
     (setf (ord-collection-name collection) new-name))
   (ord-mode-refresh-view))
+
+;;;; expand collection       
+
+(defvar ord--default-expand-alist
+  '(("backlinks" ?b ord--get-backlink-ids)
+    ("forwardlinks" ?f ord--get-forwardlinks)))
+       
+(defcustom ord-mode-expand-alist ord--default-expand-alist
+  "Ways to expand the collection. Format of the elements of the alist
+should be: (SHORT-ANSWER HELP-MESSAGE EXPAND-FUNCTION), where
+  EXPAND-FUNCTION takes a node, and returns a list of node-ids."
+  :group 'org-roam-desktop
+  :type 'elisp)
+
+(setq ord-mode-expand-alist ord--default-expand-alist)
+
+(defun ord-expand-collection (collection)
+  (interactive
+   (list
+    (ord--choose-collection)))
+  (push (ord-collection-nodes collection) ord--undo-history-stack)
+  (let* ((answer-list
+          (append (seq-map
+                   (lambda (alist-member)
+                     (list (car alist-member) (cadr alist-member)  (car alist-member)))             
+                   ord-mode-expand-alist) '(("quit" ?q "exit"))))
+         (user-selection
+          (read-answer "Expand collection by: " answer-list)))
+    (if (not (string= user-selection "quit"))
+        ;; need to match up with original alist
+        (if-let (expand-function (nth 2 (assoc user-selection ord-mode-expand-alist)))
+            (let* ((node-list (ord--node-id-list-to-node-list
+                               (ord-collection-nodes collection)))
+                   (new-node-id-list '()))
+              (seq-do
+               (lambda (node)               
+                 (setq new-node-id-list (append new-node-id-list (funcall expand-function node))))
+               node-list)
+              (ord--add-node-ids-to-collection new-node-id-list collection)
+              (ord-mode-refresh-view))))))
+
+;;; ord-mode-map
 
 (define-key ord-mode-map (kbd "g")
             #'ord-mode-refresh-view)
