@@ -75,6 +75,76 @@
    ord-mode is displaying.")
 (put 'ord-buffer-current-collection 'permanent-local t)
 
+;;; org(-roam) utility functions
+
+(defun ord--node-id-list-to-node-list (id-list)
+  "ID-LIST is a sequence of ids; returns a list of nodes corresponding
+to the ids."
+  (let ((node-list ()))
+    (seq-do (lambda (node-id)
+              (when-let ((node (org-roam-node-from-id node-id)))
+                (push node node-list))) id-list)
+    node-list))
+
+(defun ord--node-list-to-id-list (node-list)
+  "NODE-LIST is a sequence of nodes; returns a list of ids corresponding
+to the nodes."
+  (let ((node-id-list ()))
+    (seq-do (lambda (node)
+              (when-let ((node-id (org-roam-node-id node)))
+                (push node-id node-id-list))) node-list)
+    node-id-list))
+
+(defun ord--get-link-address ()
+  "When point is at an org-link, returns the link address as string."
+  (when (org-in-regexp org-link-bracket-re 1)
+    ;; We do have a link at point. 
+    (match-string-no-properties 1)))
+
+(defun ord--get-id-of-id-link ()
+  (save-excursion
+    (when-let ((link-address (ord--get-link-address)))
+      (if (string= (substring link-address 0 2) "id")
+          (substring link-address 3)))))
+
+(defun ord--node-ids-at-point (&optional force-prompt)
+  "If region is active, and there are links in the region, returns ids
+  of links in region; else, if point is on an org-roam link, then
+  return that id; else, if in a magit-section buffer where
+  org-roam-node-at-point returns non-nil, returns id of entry; else,
+  prompts user to chooes an entry, and returns id of that. If
+  FORCE-PROMPT is true, then prompt no matter what."
+  (if force-prompt
+      (ord-choose-node-id)
+    ;; in following, are checking if there are actually links in the region
+    (if (and (use-region-p) (ord--links-in-region)) 
+        (ord--links-in-region)
+      (if (ord--get-id-of-id-link)
+          (list (ord--get-id-of-id-link))
+        (if (org-roam-node-at-point)
+            (list (org-roam-node-id (org-roam-node-at-point)))
+          (ord-choose-node-id))))))
+
+(defun ord--start-of-file-node ()
+  (save-excursion
+    (goto-char (point-min))
+    (org-fold-hide-drawer-toggle 'off t)
+    (goto-char (cdr (org-get-property-block)))
+    (next-line)
+    (while (looking-at-p org-keyword-regexp)
+      (next-line))
+    (org-fold--hide-drawers (point-min) (point))
+    (point)))
+
+(defun ord--get-forwardlinks (node)
+  (with-temp-buffer
+    (insert-file-contents (org-roam-node-file node))
+    (org-mode)
+    (goto-char (ord--start-of-file-node))
+    (let ((beg (point))
+          (end (point-max)))
+      (ord--node-id-list-to-node-list (ord--links-in-region beg end)))))
+
 ;;; basic functions for collections
 (defun ord-create-collection (collection-name)
   (interactive (list (read-string "name of new collection: """)))
@@ -132,23 +202,10 @@ all were already in the collection), else returns t."
     (setf (ord-collection-nodes
            ord-buffer-current-collection) new-id-list)))
 
-(defun ord--get-link-address ()
-  "When point is at an org-link, returns the link address as string."
-  (when (org-in-regexp org-link-bracket-re 1)
-    ;; We do have a link at point. 
-    (match-string-no-properties 1)))
-
-(defun ord--get-id-of-id-link ()
-  (save-excursion
-    (when-let ((link-address (ord--get-link-address)))
-      (if (string= (substring link-address 0 2) "id")
-          (substring link-address 3)))))
-
-(cl-defun ord--links-in-region (&optional (start (region-beginning)) (end (region-end))) 
+(cl-defun ord--links-in-region (&optional (start (region-beginning)) (end (region-end)))
   (let ((min-marker (make-marker))
         (max-marker (make-marker))
         (return-list ()))
-    (when (use-region-p)
       (set-marker min-marker start)
       (set-marker max-marker end)
       (save-mark-and-excursion 
@@ -160,29 +217,11 @@ all were already in the collection), else returns t."
             (when-let ((id (ord--get-id-of-id-link)))
               (push id return-list))
             (org-next-link))))
-      return-list)))
+      return-list))
 
 (defun ord-choose-node-id ()  
   (let ((node (org-roam-node-read nil nil nil t)))
     (list (org-roam-node-id node))))
-
-(defun ord--node-ids-at-point (&optional force-prompt)
-  "If region is active, and there are links in the region, returns ids
-  of links in region; else, if point is on an org-roam link, then
-  return that id; else, if in a magit-section buffer where
-  org-roam-node-at-point returns non-nil, returns id of entry; else,
-  prompts user to chooes an entry, and returns id of that. If
-  FORCE-PROMPT is true, then prompt no matter what."
-  (if force-prompt
-      (ord-choose-node-id)
-    ;; in following, are checking if there are actually links in the region
-    (if (and (use-region-p) (ord--links-in-region)) 
-        (ord--links-in-region)
-      (if (ord--get-id-of-id-link)
-          (list (ord--get-id-of-id-link))
-        (if (org-roam-node-at-point)
-            (list (org-roam-node-id (org-roam-node-at-point)))
-          (ord-choose-node-id))))))
 
 ;;; save, close, and load collections
 
@@ -327,17 +366,6 @@ the same time:
   "A `magit-section' used by `org-roam-mode' to contain preview content.
 The preview content comes from FILE, and the link as at POINT.")
 
-(defun ord--start-of-file-node ()
-  (save-excursion
-    (goto-char (point-min))
-    (org-fold-hide-drawer-toggle 'off t)
-    (goto-char (cdr (org-get-property-block)))
-    (next-line)
-    (while (looking-at-p org-keyword-regexp)
-      (next-line))
-    (org-fold--hide-drawers (point-min) (point))
-    (point)))
-
 (defun ord-preview-visit (&optional not-other-window)
   "Visit the node whose preview section point is in; return the
 visited buffer. With OTHER-WINDOW non-nil do so in another
@@ -418,15 +446,6 @@ first 6 digits of its id."
    " ("
    (substring (ord-collection-id collection) 5 11)
    ")"))
-
-(defun ord--node-id-list-to-node-list (id-list)
-  "ID-LIST is a sequence of id's; returns a list of nodes corresponding
-to the ids."
-  (let ((node-list ()))
-    (seq-do (lambda (node-id)
-              (when-let ((node (org-roam-node-from-id node-id)))
-                (push node node-list))) id-list)
-    node-list))
 
 (defun ord-mode-entry-section-function-default (node)
   (ord-node-insert-section
