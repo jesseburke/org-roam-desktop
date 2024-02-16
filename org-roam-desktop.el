@@ -529,20 +529,25 @@ first 6 digits of its id."
 
 (cl-defun ord--entries-in-region (&optional (start (region-beginning)) (end (region-end)))
   "If in an ord-mode buffer, return the entries are displayed between
-  START and END, inclusive."
+  START and END, inclusive."  
   (let ((node-ids (ord-collection-nodes
-                    ord-buffer-current-collection))
+                   ord-buffer-current-collection))
         (node-ids-in-region '()))
     (seq-do (lambda (node-id)
-              (cl-destructuring-bind (section-start section-end)
-                  (plist-get ord--node-to-position-plist
-                             node-id)
-                (if (or (and (<= start section-start) (<= section-start end))
-                        (and (<= start section-end) (<= section-end
-                                                        end)))
-                    (push node-id node-ids-in-region))))
+              (if-let ((positions (plist-get ord--node-to-position-plist
+                                             node-id)))
+                  (let ((section-start (car positions))
+                        (section-end (cadr positions)))
+                    (if (and (and section-start section-end)
+                             (or (and (<= start section-start) (<= section-start end))
+                                 (and (<= start section-end) (<= section-end
+                                                                 end))
+                                 (and (<= section-start start) (<= end
+                                                                    section-end))))
+                        (push node-id node-ids-in-region)))))
             node-ids)
     node-ids-in-region))
+
 
 ;;; export collection into org-mode buffer
 
@@ -765,8 +770,7 @@ should be: (SHORT-ANSWER HELP-MESSAGE EXPAND-FUNCTION), where
                                                ord-mode-expand-alist)))
             ;; want to adjust node-list based on whether region is active.
             (let* ((node-id-list (if (region-active-p)
-                                     (ord--entries-in-region
-                                      (region-beginning) (region-end))
+                                     (ord--entries-in-region)
                                    (ord-collection-nodes collection)))
                    (node-list (ord--node-id-list-to-node-list node-id-list))
                    (new-node-id-list '()))
