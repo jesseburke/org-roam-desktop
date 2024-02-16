@@ -76,7 +76,9 @@
 
 ;;; basic functions for collections
 (defun ord-create-collection (collection-name)
-  (interactive (list (read-string "name of new collection: " "")))
+  (interactive (list (read-string "name of new collection: """)))
+  (while (string= collection-name "")
+      (setq collection-name (read-string "name of new collection (must be non-empty): """)))
   (let ((new-collection
          (make-ord-collection :name collection-name
                                      :id (concat "ord-" (org-id-uuid))
