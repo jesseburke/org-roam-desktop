@@ -641,13 +641,19 @@ entry, whose heading is the name of the section. Then a subentry
                                            collection))    
   (ord-mode-refresh-view))
 
-(defun ord-mode-delete-entry ()
+(defun ord-mode-delete-entries ()
   (interactive)
   "Delete the entry at point from collection."
-  (push (ord-collection-nodes ord-buffer-current-collection) ord--undo-history-stack)
-  (ord--delete-node-id-from-collection (car (ord--node-ids-at-point))
-                                       ord-buffer-current-collection)
-  (ord-mode-refresh-view))
+  (push (ord-collection-nodes ord-buffer-current-collection)
+        ord--undo-history-stack)
+  (let ((nodes-to-delete (if (region-active-p)
+                             (ord--entries-in-region)
+                           (ord--node-ids-at-point))))
+    (seq-do (lambda (node-id)
+              (ord--delete-node-id-from-collection node-id
+                                                   ord-buffer-current-collection))
+            nodes-to-delete)
+  (ord-mode-refresh-view)))
 
 (defun ord-mode-choose-entry-from-collection (collection)
   "User can select entry from current collection; after selection
@@ -768,7 +774,7 @@ should be: (SHORT-ANSWER HELP-MESSAGE EXPAND-FUNCTION), where
             #'ord-mode-refresh-view)
 (define-key ord-preview-map [remap org-roam-buffer-refresh] #'ord-mode-refresh-view)
 (define-key ord-mode-map (kbd "k")
-            #'ord-mode-delete-entry)
+            #'ord-mode-delete-entries)
 (define-key ord-mode-map (kbd "a") #'ord-add-node-at-point)
 (define-key ord-mode-map (kbd "s")
             #'ord-mode-save-collection)
