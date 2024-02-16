@@ -465,7 +465,11 @@ first 6 digits of its id."
 
 (defvar ord--node-to-position-plist '()
   "A buffer local variable: stores where the section of a given node
-  starts in the current buffer. Used for moving point to a given section.")
+  starts and ends in the current buffer. More specifically, the
+  keys of the plist are the id's of the entries in the
+  collection, and the value at an id has the form (start . end),
+  which give positions in the buffer. Used for moving point to a
+  given section.")
 (put 'ord--node-to-position-plist 'permanent-local t)
 
 (defun ord--render-collection-view ()
@@ -489,14 +493,16 @@ first 6 digits of its id."
             (magit-insert-heading)      
             (seq-do
              (lambda (node)
-               (setq-local ord--node-to-position-plist
-                     (plist-put ord--node-to-position-plist
-                          (org-roam-node-id node) (point)))
-               (seq-do
-                (lambda (func)
-                  (funcall func node))
-                ord-mode-entry-section-functions))
-             sorted-node-list))))))
+               (let ((section-start (point))
+                     section-end)                 
+                 (seq-do
+                  (lambda (func)
+                    (funcall func node))
+                  ord-mode-entry-section-functions)
+                 (setq-local ord--node-to-position-plist
+                             (plist-put ord--node-to-position-plist
+                                        (org-roam-node-id node) (list section-start (point))))))
+               sorted-node-list))))))
 
 (defun ord--create-and-display-collection-view (collection)
   (let* ((buffer-name (ord--buffer-name-for-collection collection))
@@ -643,8 +649,8 @@ entry, whose heading is the name of the section. Then a subentry
                                   'require-match)))   
     (if-let ((selected-id (cdr (assoc selected-name
                                       node-ids-and-names))))
-        (goto-char (plist-get ord--node-to-position-plist
-                              selected-id)))))
+        (goto-char (car (plist-get ord--node-to-position-plist
+                              selected-id))))))
 
 (defun ord-mode-duplicate-collection (collection)  
   (interactive (list (ord--choose-collection)))
