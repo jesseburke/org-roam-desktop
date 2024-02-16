@@ -144,13 +144,13 @@ all were already in the collection), else returns t."
       (if (string= (substring link-address 0 2) "id")
           (substring link-address 3)))))
 
-(defun ord--links-in-region () 
+(cl-defun ord--links-in-region (&optional (start (region-beginning)) (end (region-end))) 
   (let ((min-marker (make-marker))
         (max-marker (make-marker))
         (return-list ()))
     (when (use-region-p)
-      (set-marker min-marker (region-beginning))
-      (set-marker max-marker (region-end))
+      (set-marker min-marker start)
+      (set-marker max-marker end)
       (save-mark-and-excursion 
         (goto-char (marker-position min-marker))
         (let ((old-point (point)))
@@ -175,7 +175,8 @@ all were already in the collection), else returns t."
   FORCE-PROMPT is true, then prompt no matter what."
   (if force-prompt
       (ord-choose-node-id)
-    (if (and (use-region-p) (ord--links-in-region))
+    ;; in following, are checking if there are actually links in the region
+    (if (and (use-region-p) (ord--links-in-region)) 
         (ord--links-in-region)
       (if (ord--get-id-of-id-link)
           (list (ord--get-id-of-id-link))
@@ -329,9 +330,12 @@ The preview content comes from FILE, and the link as at POINT.")
 (defun ord--start-of-file-node ()
   (save-excursion
     (goto-char (point-min))
+    (org-fold-hide-drawer-toggle 'off t)
     (goto-char (cdr (org-get-property-block)))
     (next-line)
-    (next-line)
+    (while (looking-at-p org-keyword-regexp)
+      (next-line))
+    (org-fold--hide-drawers (point-min) (point))
     (point)))
 
 (defun ord-preview-visit (&optional not-other-window)
