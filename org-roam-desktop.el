@@ -149,10 +149,17 @@ to the nodes."
           (end (point-max)))
       (ord--links-in-region beg end))))
 
-(defun ord--get-backlink-ids (node)
-  (seq-map (lambda (backlink)
-             (org-roam-node-id (org-roam-backlink-source-node backlink)))
-           (org-roam-backlinks-get node :unique t)))
+(defun ord--get-backlink-ids (node &optional show-backlink-p)
+  (let ((filtered-backlinks
+         (seq-filter (lambda (backlink)
+                       (when (or (null show-backlink-p)
+                                 (and (not (null show-backlink-p))
+                                      (funcall show-backlink-p backlink)))
+                                backlink))
+          (org-roam-backlinks-get node :unique t))))
+    (seq-map (lambda (backlink)
+               (org-roam-node-id (org-roam-backlink-source-node backlink)))
+             filtered-backlinks)))
 
 ;;; basic functions for collections
 (defun ord-create-collection (collection-name)
@@ -680,7 +687,9 @@ entry, whose heading is the name of the section. Then a subentry
   (let* ((new-name (read-string "Name for new collection: "
                                (ord-collection-name collection)))
          (new-collection (ord-create-collection new-name)))
-    (ord--add-node-ids-to-collection (ord-collection-nodes collection) new-collection)))
+    (ord--add-node-ids-to-collection (ord-collection-nodes collection)
+                                     new-collection)
+    (ord-view-collection new-collection)))
 
 (defun ord-mode-save-collection ()
   (interactive)
@@ -727,7 +736,7 @@ entry, whose heading is the name of the section. Then a subentry
 ;;;; expand collection       
 
 (defvar ord--default-expand-alist
-  '(("backlinks" ?b ord--get-backlink-ids)
+  '(("backlinks" ?b (lambda (node) (ord--get-backlink-ids node)))
     ("forwardlinks" ?f ord--get-forwardlinks)))
        
 (defcustom ord-mode-expand-alist ord--default-expand-alist
@@ -796,6 +805,7 @@ should be: (SHORT-ANSWER HELP-MESSAGE EXPAND-FUNCTION), where
 (define-key ord-mode-map (kbd "r") #'ord-rename-collection)
 (define-key ord-mode-map (kbd "e") #'ord-expand-collection)
 (define-key ord-mode-map (kbd "u") #'ord-undo)
+(define-key ord-mode-map (kbd "d") #'ord-mode-duplicate-collection)
 
 
 ;;; ord-map, to be used anywhere in emacs
