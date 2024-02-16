@@ -366,14 +366,17 @@ headline, up to the next headline."
                (point))))
     (string-trim (buffer-substring-no-properties beg end))))
 
-(defun ord-preview-full-display-function ()
+(cl-defun ord-preview-full-display-function (&optional (demote-level 2))
   "Return the preview content at point.
 
-This function returns the entire body of the entry."
+This function returns the entire body of the entry, with each entry
+  demonted DEMOTE-LEVEL number of times."
   (let ((beg (save-excursion
                (org-roam-end-of-meta-data t)
                (point)))
         (end (point-max)))
+    (dotimes (i demote-level)
+             (org-map-entries 'org-do-demote))
     (string-trim (buffer-substring-no-properties beg end))))
 
 (defcustom ord-preview-display-function #'ord-preview-default-display-function
@@ -491,7 +494,8 @@ entry, whose heading is the name of the section. Then a subentry
                      (ord-collection-nodes collection))) 
          (sorted-node-list (sort
                             node-list
-                            ord-mode-sort-function)))
+                            ord-mode-sort-function))
+         (ord-preview-display-function #'ord-preview-full-display-function))
     (with-current-buffer buffer
       (setq-local ord-buffer-current-collection collection)
       (erase-buffer)
@@ -505,7 +509,8 @@ entry, whose heading is the name of the section. Then a subentry
         (seq-do
          (lambda (node)
            (newline)
-           (org-insert-heading)
+           (org-insert-heading nil nil t)
+           (org-demote-subtree)
            (insert
             (org-link-make-string
              (concat "id:" (org-roam-node-id node))
