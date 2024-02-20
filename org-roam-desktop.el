@@ -1,5 +1,5 @@
-;;; -*- lexical-binding: t; -*-
-;;; org-roam-desktop.el --- tool for inspection and revision of an org-roam zettlekasten.
+;; -*- lexical-binding: t; -*-
+;; org-roam-desktop.el --- tool for inspection and revision of an org-roam zettlekasten.
 
 ;; Author: Jesse Burke <jtb445@gmail.com>
 ;;
@@ -140,26 +140,83 @@ to the nodes."
     (org-fold--hide-drawers (point-min) (point))
     (point)))
 
-(defun ord--get-forwardlinks (node)
-  (with-temp-buffer
-    (insert-file-contents (org-roam-node-file node))
-    (org-mode)
-    (goto-char (ord--start-of-file-node))
-    (let ((beg (point))
-          (end (point-max)))
-      (ord--links-in-region beg end))))
+(defun ord--get-forwardlinks (node-id)
+  (if-let (node (org-roam-node-from-id node-id))
+      (with-temp-buffer
+        (insert-file-contents (org-roam-node-file node))
+        (org-mode)
+        (goto-char (ord--start-of-file-node))        
+        (let ((beg (point))
+              (end (point-max)))
+          (ord--links-in-region beg end)))))
 
-(defun ord--get-backlink-ids (node &optional show-backlink-p)
-  (let ((filtered-backlinks
-         (seq-filter (lambda (backlink)
-                       (when (or (null show-backlink-p)
-                                 (and (not (null show-backlink-p))
-                                      (funcall show-backlink-p backlink)))
-                                backlink))
-          (org-roam-backlinks-get node :unique t))))
-    (seq-map (lambda (backlink)
-               (org-roam-node-id (org-roam-backlink-source-node backlink)))
-             filtered-backlinks)))
+(cl-defun ord--query-for-backlinks (node-id &key unique)
+  "Return the backlinks for NODE-ID.
+
+ When UNIQUE is nil, show all positions where references are found.
+ When UNIQUE is t, limit to unique sources."
+  (let* ((sql (if unique
+                  [:select :distinct [source dest pos properties]
+                   :from links
+                   :where (= dest $s1)
+                   :and (= type "id")
+                   :group :by source
+                   :having (funcall min pos)]
+                [:select [source dest pos properties]
+                 :from links
+                 :where (= dest $s1)
+                 :and (= type "id")]))
+         (backlinks (org-roam-db-query sql node-id)))
+    (cl-loop for backlink in backlinks
+             collect (pcase-let ((`(,source-id ,dest-id ,pos ,properties) backlink))
+                        (org-roam-backlink-create
+                         :source-node (org-roam-node-create :id source-id)
+                         :target-node (org-roam-node-create :id dest-id)
+                         :point pos
+                         :properties properties)))))
+
+;; (ord--query-for-backlinks "8F0AED6C-CA49-4101-B5E7-D5BAA6DB4B7B"
+;; :unique t)
+
+(defun ord--get-backlink-ids (node-id &optional show-backlink-p)
+  (let* ((backlinks (ord--query-for-backlinks node-id :unique t))
+         (filtered-backlinks
+          (seq-filter (lambda (backlink)
+                        (when (or (null show-backlink-p)
+                                  (and (not (null show-backlink-p))
+                                       (funcall show-backlink-p backlink)))
+                          backlink))
+                      backlinks))
+         (filtered-backlink-ids
+         (seq-map (lambda (backlink) (org-roam-node-id
+                                      (org-roam-backlink-source-node backlink)))                  
+                  filtered-backlinks)))
+    filtered-backlink-ids))    
+
+;; (ord--get-backlink-ids "8F0AED6C-CA49-4101-B5E7-D5BAA6DB4B7B")
+
+
+(cl-defun ord--links-in-region (&optional (start (region-beginning)) (end (region-end)))
+  (let ((min-marker (make-marker))
+        (max-marker (make-marker))
+        (return-list ()))
+      (set-marker min-marker start)
+      (set-marker max-marker end)
+      (save-mark-and-excursion 
+        (goto-char (marker-position min-marker))
+        (let ((old-point (point)))
+          (org-next-link)
+          (while (and (< old-point (point)) (< (point) (marker-position max-marker)))
+            (setq old-point (point)) 
+            (when-let ((id (ord--get-id-of-id-link)))
+              (push id return-list))
+            (org-next-link))))
+      return-list))
+
+(defun ord-choose-node-id ()  
+  (let ((node (org-roam-node-read nil nil nil t)))
+    (list (org-roam-node-id node))))
+
 
 ;;; basic functions for collections
 (defun ord-create-collection (collection-name)
@@ -217,27 +274,6 @@ all were already in the collection), else returns t."
                       id-list)))
     (setf (ord-collection-nodes
            ord-buffer-current-collection) new-id-list)))
-
-(cl-defun ord--links-in-region (&optional (start (region-beginning)) (end (region-end)))
-  (let ((min-marker (make-marker))
-        (max-marker (make-marker))
-        (return-list ()))
-      (set-marker min-marker start)
-      (set-marker max-marker end)
-      (save-mark-and-excursion 
-        (goto-char (marker-position min-marker))
-        (let ((old-point (point)))
-          (org-next-link)
-          (while (and (< old-point (point)) (< (point) (marker-position max-marker)))
-            (setq old-point (point)) 
-            (when-let ((id (ord--get-id-of-id-link)))
-              (push id return-list))
-            (org-next-link))))
-      return-list))
-
-(defun ord-choose-node-id ()  
-  (let ((node (org-roam-node-read nil nil nil t)))
-    (list (org-roam-node-id node))))
 
 ;;; save, close, and load collections
 
@@ -741,13 +777,13 @@ entry, whose heading is the name of the section. Then a subentry
 ;;;; expand collection       
 
 (defvar ord--default-expand-alist
-  '(("backlinks" ?b (lambda (node) (ord--get-backlink-ids node)))
+  '(("backlinks" ?b (lambda (node-id) (ord--get-backlink-ids node-id)))
     ("forwardlinks" ?f ord--get-forwardlinks)))
        
 (defcustom ord-mode-expand-alist ord--default-expand-alist
   "Ways to expand the collection. Format of the elements of the alist
 should be: (SHORT-ANSWER HELP-MESSAGE EXPAND-FUNCTION), where
-  EXPAND-FUNCTION takes a node, and returns a list of node-ids."
+  EXPAND-FUNCTION takes a node-id, and returns a list of node-ids."
   :group 'org-roam-desktop
   :type 'elisp)
 
@@ -772,12 +808,11 @@ should be: (SHORT-ANSWER HELP-MESSAGE EXPAND-FUNCTION), where
             (let* ((node-id-list (if (region-active-p)
                                      (ord--entries-in-region)
                                    (ord-collection-nodes collection)))
-                   (node-list (ord--node-id-list-to-node-list node-id-list))
                    (new-node-id-list '()))
               (seq-do
-               (lambda (node)               
-                 (setq new-node-id-list (append new-node-id-list (funcall expand-function node))))
-               node-list)
+               (lambda (node-id)               
+                 (setq new-node-id-list (append new-node-id-list (funcall expand-function node-id))))
+               node-id-list)
               (ord--add-node-ids-to-collection new-node-id-list collection)
               (ord-mode-refresh-view))))))
 
