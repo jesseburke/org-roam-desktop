@@ -373,33 +373,17 @@ all were already in the collection), else returns t."
   (setf (ord-collection-nodes ord-buffer-collection)
         (pop (ord-collection-history-stack ord-buffer-collection))))
 
+(defun ord--base-buffer-name (collection)
+  "The name of a buffer for a collection starts with `*ord
+collection: ` plus collection name."
+  (concat
+   "*ord collection: "
+   (ord-collection-name collection)))
+
 ;;;; ord-section-mode
 
 (define-derived-mode ord-section-mode magit-section-mode "OrgRoamDesktop"
   "Major mode for displaying collection of org-roam nodes.")
-
-;;;;; ord-section-mode specific commands
-
-(cl-defun ord--entries-in-section-region (&optional (start (region-beginning)) (end (region-end)))
-  "If in an ord-section-mode buffer, return the entries are displayed between
-  START and END, inclusive."  
-  (let ((node-ids (ord-collection-nodes
-                   ord-buffer-collection))
-        (node-ids-in-region '()))
-    (seq-do (lambda (node-id)
-              (if-let ((positions (plist-get ord--node-to-position-plist
-                                             node-id)))
-                  (let ((section-start (car positions))
-                        (section-end (cadr positions)))
-                    (if (and (and section-start section-end)
-                             (or (and (<= start section-start) (<= section-start end))
-                                 (and (<= start section-end) (<= section-end
-                                                                 end))
-                                 (and (<= section-start start) (<= end
-                                                                    section-end))))
-                        (push node-id node-ids-in-region)))))
-            node-ids)
-    node-ids-in-region))
 
 ;;;;; preview sections, mostly copied from org-roam
 (define-prefix-command 'ord-preview-map)
@@ -482,16 +466,11 @@ to the exact location of the backlink."
          s)))))
 
 ;;;;; rendering the buffer
-(defun ord--buffer-name-for-collection (collection)
-  "The name of a buffer for a collection starts with `*ord
-collection: ` plus collection name and the
-first 6 digits of its id."
+
+(defun ord--section-buffer-name (collection)  
   (concat
-   "*ord collection: "
-   (ord-collection-name collection)
-   " ("
-   (substring (ord-collection-id collection) 5 11)
-   ")"))
+   (ord--base-buffer-name collection)
+   " (section view)"))
 
 (defun ord-mode-entry-section-function-default (node)
   (ord-node-insert-section
@@ -542,7 +521,7 @@ first 6 digits of its id."
                sorted-node-list))))))
 
 (defun ord--create-and-display-collection-view (collection)
-  (let* ((buffer-name (ord--buffer-name-for-collection collection))
+  (let* ((buffer-name (ord--section-buffer-name collection))
          (buffer (get-buffer-create buffer-name)))        
     (with-current-buffer buffer      
       (setq-local ord-buffer-collection collection)
@@ -552,7 +531,7 @@ first 6 digits of its id."
 (defun ord-view-collection (collection)
   (interactive (list
                 (ord--local-collection-or-choose)))
-  (let ((buffer-name (ord--buffer-name-for-collection collection)))
+  (let ((buffer-name (ord--section-buffer-name collection)))
     (if (get-buffer buffer-name)
         (switch-to-buffer-other-window buffer-name)
       (ord--create-and-display-collection-view collection))))
@@ -744,7 +723,7 @@ entry, whose heading is the name of the section. Then a subentry
   for each node in COLLECTION. For the subentries, the headline
   is the node title and the body is the preview section text."
    (interactive (list (ord--choose-collection)))
-  (let* ((buffer-name (concat (ord--buffer-name-for-collection
+  (let* ((buffer-name (concat (ord--section-buffer-name
                                collection) ".org"))
          (buffer (get-buffer-create buffer-name))
          ;; need nodes, as opposed to ids, to get names, to sort.
@@ -784,7 +763,7 @@ entry, whose heading is the name of the section. Then a subentry
 
   (defun ord-export-collection-to-org-list (collection)
     (interactive (list (ord--choose-collection)))
-    (let* ((buffer-name (concat (ord--buffer-name-for-collection
+    (let* ((buffer-name (concat (ord--section-buffer-name
                                  collection) "-list" ".org"))
            (buffer (get-buffer-create buffer-name))
            ;; need nodes, as opposed to ids, to get names, to sort.
