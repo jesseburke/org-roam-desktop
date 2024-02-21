@@ -224,16 +224,13 @@ to the nodes."
 (cl-defun ord--choose-collection (&optional force-prompt require-match
   (prompt-string "Choose collection: "))
   "To be passed to interactive form, to choose a collection: if there
-  is only one collection loaded, then that is it; otherwise, if
-  the buffer-local variable ORD-BUFFER-CURRENT-COLLECTION is
-  non-nil, use that (it will be in org-mode buffers); otherwise,
-  the user is prompted to choose from among the names of
-  collections currently loaded. If optional argument
-  FORCE-PROMPT is true, then prompt the user no matter what."
+  is only one collection loaded, then that is it; otherwise, the
+  user is prompted to choose from among the names of loaded
+  collections. If optional argument FORCE-PROMPT is true, then
+  prompt the user no matter what."
   (if current-prefix-arg (setq force-prompt t))
   (if (and (not force-prompt) (= (length ord-collection-list) 1))
       (car ord-collection-list)
-    (if (and (not force-prompt) ord-buffer-current-collection)  ord-buffer-current-collection
       (let* ((extended-list
               (seq-map (lambda (collection)
                          (cons
@@ -245,7 +242,7 @@ to the nodes."
              (if-let ((chosen-collection (cdr (assoc read-text
                                                      extended-list))))
                  chosen-collection
-               (ord-create-collection read-text))))))
+               (ord-create-collection read-text)))))
 
 (defun ord--add-node-ids-to-collection (node-ids collection)
   "NODE-IDS is a list. Returns nil if no id's were added (i.e., they
@@ -279,6 +276,10 @@ all were already in the collection), else returns t."
 (defvar ord--undo-history-stack '()
   "A buffer local variable: needed for undo functionality.")
 (put 'ord--undo-history-stack 'permanent-local t)
+
+(defun ord--local-collection-or-choose ()
+  (if ord-buffer-current-collection  ord-buffer-current-collection
+    (ord--choose-collection)))
 
 ;;;; ord-section-mode
 
@@ -480,7 +481,7 @@ first 6 digits of its id."
 
 (defun ord-view-collection (collection)
   (interactive (list
-                (ord--choose-collection)))
+                (ord--local-collection-or-choose)))
   (let ((buffer-name (ord--buffer-name-for-collection collection)))
     (if (get-buffer buffer-name)
         (switch-to-buffer-other-window buffer-name)
@@ -508,9 +509,9 @@ first 6 digits of its id."
     node-ids-in-region))
 
 (defun ord-section-mode-refresh-view ()
-  (interactive)
   "Refresh the contents of the currently selected org-roam-desktop
   buffer."
+  (interactive)  
   (unless (not (derived-mode-p 'ord-section-mode))
     (let ((point (point)))
         (magit-section-cache-visibility (magit-current-section))
@@ -520,7 +521,7 @@ first 6 digits of its id."
 ;;; commands used in ord-mode buffers (where collections are displayed)   
 
 (defun ord-add-node-at-point (collection)
-  (interactive (list (ord--choose-collection)))
+  (interactive (list (ord--local-collection-or-choose)))
   (push (ord-collection-nodes collection) ord--undo-history-stack)
   (unless (ord--add-node-ids-to-collection (ord--node-ids-at-point)
                                            collection)
@@ -528,9 +529,9 @@ first 6 digits of its id."
                                            collection))    
   (ord-section-mode-refresh-view))
 
-(defun ord-mode-delete-entries ()
-  (interactive)
+(defun ord-mode-delete-entries (collection)
   "Delete the entry at point from collection."
+  (interactive (list (ord--local-collection-or-choose)))  
   (push (ord-collection-nodes ord-buffer-current-collection)
         ord--undo-history-stack)
   (let ((nodes-to-delete (if (region-active-p)
@@ -545,7 +546,7 @@ first 6 digits of its id."
 (defun ord-mode-choose-entry-from-collection (collection)
   "User can select entry from current collection; after selection
   point is moved there."
-  (interactive (list (ord--choose-collection)))
+  (interactive (list (ord--local-collection-or-choose)))
   (push (ord-collection-nodes collection) ord--undo-history-stack)
   (let* ((node-ids (ord-collection-nodes collection))
          (node-ids-and-names (seq-map
@@ -563,7 +564,7 @@ first 6 digits of its id."
                               selected-id))))))
 
 (defun ord-mode-duplicate-collection (collection)  
-  (interactive (list (ord--choose-collection)))
+  (interactive (list (ord--local-collection-or-choose)))
   (let* ((new-name (read-string "Name for new collection: "
                                (ord-collection-name collection)))
          (new-collection (ord-create-collection new-name)))
@@ -571,10 +572,10 @@ first 6 digits of its id."
                                      new-collection)
     (ord-view-collection new-collection)))
 
-(defun ord-mode-save-collection ()
-  (interactive)
+(defun ord-mode-save-collection (collection)
+  (interactive (list (ord--local-collection-or-choose)))  
   "Save the current collection."
-  (ord-save-collection ord-buffer-current-collection))
+  (ord-save-collection collection))
 
 (defun ord-mode-show-org-roam-buffer ()
   (interactive)
@@ -582,7 +583,7 @@ first 6 digits of its id."
   (org-roam-buffer-display-dedicated (org-roam-node-at-point)))
 
 (defun ord-choose-and-add-node (collection)
-  (interactive (list (ord--choose-collection)))
+  (interactive (list (ord--local-collection-or-choose)))
   (push (ord-collection-nodes collection) ord--undo-history-stack)
   (let* ((node (org-roam-node-read "Entry to add: " nil nil t))
          (node-id (org-roam-node-id node)))
@@ -601,7 +602,7 @@ first 6 digits of its id."
     (ord-view-collection collection)))
 
 (defun ord-rename-collection (collection)  
-  (interactive (list (ord--choose-collection)))
+  (interactive (list (ord--local-collection-or-choose)))
   (let ((new-name (read-string "New name for collection: "
                                (ord-collection-name collection))))
     (setf (ord-collection-name collection) new-name))
@@ -629,9 +630,7 @@ should be: (SHORT-ANSWER HELP-MESSAGE EXPAND-FUNCTION), where
 (setq ord-mode-expand-alist ord--default-expand-alist)
 
 (defun ord-expand-collection (collection)
-  (interactive
-   (list
-    (ord--choose-collection)))
+  (interactive (list (ord--local-collection-or-choose)))
   (push (ord-collection-nodes collection) ord--undo-history-stack)
   (let* ((answer-list
           (append (seq-map
@@ -745,9 +744,7 @@ should be: (SHORT-ANSWER HELP-MESSAGE EXPAND-FUNCTION), where
 entry, whose heading is the name of the section. Then a subentry
   for each node in COLLECTION. For the subentries, the headline
   is the node title and the body is the preview section text."
-  (interactive
-   (list
-    (ord--choose-collection)))  
+   (interactive (list (ord--choose-collection)))
   (let* ((buffer-name (concat (ord--buffer-name-for-collection
                                collection) ".org"))
          (buffer (get-buffer-create buffer-name))
@@ -786,40 +783,38 @@ entry, whose heading is the name of the section. Then a subentry
         (kill-line))
       (switch-to-buffer-other-window buffer))))
 
-(defun ord-export-collection-to-org-list (collection)
-  (interactive
-   (list
-    (ord--choose-collection)))
-  (let* ((buffer-name (concat (ord--buffer-name-for-collection
-                               collection) "-list" ".org"))
-         (buffer (get-buffer-create buffer-name))
-          ;; need nodes, as opposed to ids, to get names, to sort.
-         (node-list (ord--node-id-list-to-node-list
-                     (ord-collection-nodes collection))) 
-         (sorted-node-list (sort
-                            node-list
-                            ord-mode-sort-function)))
-    (with-current-buffer buffer
-      (setq-local ord-buffer-current-collection collection)
-      (erase-buffer)
-      (org-mode)
-      (let ((first-node (car sorted-node-list)))
-        (insert
-         (concat "- "
-                 (org-link-make-string
-                  (concat "id:" (org-roam-node-id first-node))
-                  (org-roam-node-title first-node)))))
-      (newline)
-      (seq-do
-       (lambda (node)         
-         (org-insert-item)
+  (defun ord-export-collection-to-org-list (collection)
+    (interactive (list (ord--choose-collection)))
+    (let* ((buffer-name (concat (ord--buffer-name-for-collection
+                                 collection) "-list" ".org"))
+           (buffer (get-buffer-create buffer-name))
+           ;; need nodes, as opposed to ids, to get names, to sort.
+           (node-list (ord--node-id-list-to-node-list
+                       (ord-collection-nodes collection))) 
+           (sorted-node-list (sort
+                              node-list
+                              ord-mode-sort-function)))
+      (with-current-buffer buffer
+        (setq-local ord-buffer-current-collection collection)
+        (erase-buffer)
+        (org-mode)
+        (let ((first-node (car sorted-node-list)))
           (insert
+           (concat "- "
+                   (org-link-make-string
+                    (concat "id:" (org-roam-node-id first-node))
+                    (org-roam-node-title first-node)))))
+        (newline)
+        (seq-do
+         (lambda (node)         
+           (org-insert-item)
+           (insert
             (org-link-make-string
              (concat "id:" (org-roam-node-id node))
              (org-roam-node-title node)))         
            (newline))
          (cdr sorted-node-list)))
-    (switch-to-buffer-other-window buffer)))
+      (switch-to-buffer-other-window buffer)))
 
 ;;; ord-mode-map
 
