@@ -70,15 +70,6 @@
 
 (defvar ord-collection-list '() "Global list of `loaded` collections.")
 
-(defvar ord-buffer-current-collection nil
-  "A buffer local variable: the collection which an a buffer in
-   ord-mode is displaying.")
-(put 'ord-buffer-current-collection 'permanent-local t)
-
-(defvar ord--undo-history-stack '()
-  "A buffer local variable: needed for undo functionality.")
-(put 'ord--undo-history-stack 'permanent-local t)
-
 ;;; org(-roam) utility functions
 
 (defun ord--node-id-list-to-node-list (id-list)
@@ -272,16 +263,30 @@ all were already in the collection), else returns t."
           (seq-filter (lambda (node-id)
                         (not (string= node-id node-id-to-delete)))
                       id-list)))
-    (setf (ord-collection-nodes
-           ord-buffer-current-collection) new-id-list)))
+    (setf (ord-collection-nodes collection) new-id-list)))
 
 ;;; viewing collections
 
-(define-derived-mode ord-mode magit-section-mode "OrgRoamDesktop"
+
+;; any buffer that is viewing a collection (e.g., magit-section based,
+;; or tab-list based) will have the following buffer-local variables
+;; set
+
+(defvar ord-buffer-current-collection nil
+  "A buffer local variable: the collection which the buffer is displaying.")
+(put 'ord-buffer-current-collection 'permanent-local t)
+
+(defvar ord--undo-history-stack '()
+  "A buffer local variable: needed for undo functionality.")
+(put 'ord--undo-history-stack 'permanent-local t)
+
+;;;; ord-section-mode
+
+(define-derived-mode ord-section-mode magit-section-mode "OrgRoamDesktop"
   "Major mode for displaying collection of org-roam nodes.")
 
 (defclass ord-node-section (org-roam-node-section)
-  ((keymap :initform 'ord-mode-map))
+  ((keymap :initform 'ord-section-mode-map))
   "An `org-roam-node-section' based class, changing the initial keymap
   of the former.")
 
@@ -327,7 +332,7 @@ the same time:
 
 ;;;; preview sections, mostly copied from org-roam
 (define-prefix-command 'ord-preview-map)
-(set-keymap-parent 'ord-preview-map ord-mode-map)
+(set-keymap-parent 'ord-preview-map ord-section-mode-map)
 (define-key ord-preview-map (kbd "<RET>") 'ord-preview-visit)
   
 (defclass ord-preview-section (org-roam-node-section)
@@ -437,7 +442,7 @@ first 6 digits of its id."
   (setq-local ord--node-to-position-plist '())
   (let ((inhibit-read-only t))
     (erase-buffer)
-    (ord-mode)
+    (ord-section-mode)
     (org-roam-buffer-set-header-line-format
      (concat (ord-collection-name ord-buffer-current-collection) 
              " ("
@@ -482,7 +487,7 @@ first 6 digits of its id."
       (ord--create-and-display-collection-view collection))))
 
 (cl-defun ord--entries-in-region (&optional (start (region-beginning)) (end (region-end)))
-  "If in an ord-mode buffer, return the entries are displayed between
+  "If in an ord-section-mode buffer, return the entries are displayed between
   START and END, inclusive."  
   (let ((node-ids (ord-collection-nodes
                    ord-buffer-current-collection))
@@ -502,11 +507,11 @@ first 6 digits of its id."
             node-ids)
     node-ids-in-region))
 
-(defun ord-mode-refresh-view ()
+(defun ord-section-mode-refresh-view ()
   (interactive)
   "Refresh the contents of the currently selected org-roam-desktop
   buffer."
-  (unless (not (derived-mode-p 'ord-mode))
+  (unless (not (derived-mode-p 'ord-section-mode))
     (let ((point (point)))
         (magit-section-cache-visibility (magit-current-section))
         (ord--render-collection-view)
@@ -521,7 +526,7 @@ first 6 digits of its id."
                                            collection)
     (ord--add-node-ids-to-collection (ord--node-ids-at-point t)
                                            collection))    
-  (ord-mode-refresh-view))
+  (ord-section-mode-refresh-view))
 
 (defun ord-mode-delete-entries ()
   (interactive)
@@ -535,7 +540,7 @@ first 6 digits of its id."
               (ord--delete-node-id-from-collection node-id
                                                    ord-buffer-current-collection))
             nodes-to-delete)
-  (ord-mode-refresh-view)))
+  (ord-section-mode-refresh-view)))
 
 (defun ord-mode-choose-entry-from-collection (collection)
   "User can select entry from current collection; after selection
@@ -600,13 +605,13 @@ first 6 digits of its id."
   (let ((new-name (read-string "New name for collection: "
                                (ord-collection-name collection))))
     (setf (ord-collection-name collection) new-name))
-  (ord-mode-refresh-view))
+  (ord-section-mode-refresh-view))
 
 (defun ord-undo ()
   (interactive)
   (setf (ord-collection-nodes ord-buffer-current-collection)
         (pop ord--undo-history-stack))
-  (ord-mode-refresh-view))
+  (ord-section-mode-refresh-view))
 
 ;;;; expand collection       
 
@@ -648,7 +653,7 @@ should be: (SHORT-ANSWER HELP-MESSAGE EXPAND-FUNCTION), where
                  (setq new-node-id-list (append new-node-id-list (funcall expand-function node-id))))
                node-id-list)
               (ord--add-node-ids-to-collection new-node-id-list collection)
-              (ord-mode-refresh-view))))))
+              (ord-section-mode-refresh-view))))))
 
 
 ;;; save, close, and load collections
@@ -818,33 +823,33 @@ entry, whose heading is the name of the section. Then a subentry
 
 ;;; ord-mode-map
 
-(define-key ord-mode-map (kbd "g")
-            #'ord-mode-refresh-view)
-(define-key ord-preview-map [remap org-roam-buffer-refresh] #'ord-mode-refresh-view)
-(define-key ord-mode-map (kbd "k")
+(define-key ord-section-mode-map (kbd "g")
+            #'ord-section-mode-refresh-view)
+(define-key ord-preview-map [remap org-roam-buffer-refresh] #'ord-section-mode-refresh-view)
+(define-key ord-section-mode-map (kbd "k")
             #'ord-mode-delete-entries)
-(define-key ord-mode-map (kbd "a") #'ord-add-node-at-point)
-(define-key ord-mode-map (kbd "s")
+(define-key ord-section-mode-map (kbd "a") #'ord-add-node-at-point)
+(define-key ord-section-mode-map (kbd "s")
             #'ord-mode-save-collection)
-(define-key ord-mode-map (kbd "b")
+(define-key ord-section-mode-map (kbd "b")
             #'ord-mode-show-org-roam-buffer)
-(define-key ord-mode-map (kbd "<RET>")
+(define-key ord-section-mode-map (kbd "<RET>")
             (lambda () (interactive)
               (org-roam-node-visit (org-roam-node-from-id (car (ord--node-ids-at-point))) t)))
-(define-key ord-mode-map (kbd "t")            
+(define-key ord-section-mode-map (kbd "t")            
             (lambda () (interactive)
               (other-tab-prefix)
               (org-roam-node-visit (org-roam-node-from-id (car
                                                            (ord--node-ids-at-point))))))
-(define-key ord-mode-map (kbd "c") #'ord-mode-choose-entry-from-collection)
-(define-key ord-mode-map (kbd "o")
+(define-key ord-section-mode-map (kbd "c") #'ord-mode-choose-entry-from-collection)
+(define-key ord-section-mode-map (kbd "o")
             #'ord-export-collection-to-org-buffer)
-(define-key ord-mode-map (kbd "w") #'ord-close-collection-and-buffer)
-(define-key ord-mode-map (kbd "v") #'ord-view-other-collection)
-(define-key ord-mode-map (kbd "r") #'ord-rename-collection)
-(define-key ord-mode-map (kbd "e") #'ord-expand-collection)
-(define-key ord-mode-map (kbd "u") #'ord-undo)
-(define-key ord-mode-map (kbd "d") #'ord-mode-duplicate-collection)
+(define-key ord-section-mode-map (kbd "w") #'ord-close-collection-and-buffer)
+(define-key ord-section-mode-map (kbd "v") #'ord-view-other-collection)
+(define-key ord-section-mode-map (kbd "r") #'ord-rename-collection)
+(define-key ord-section-mode-map (kbd "e") #'ord-expand-collection)
+(define-key ord-section-mode-map (kbd "u") #'ord-undo)
+(define-key ord-section-mode-map (kbd "d") #'ord-mode-duplicate-collection)
 
 
 ;;; ord-map, to be used anywhere in emacs
