@@ -275,88 +275,6 @@ all were already in the collection), else returns t."
     (setf (ord-collection-nodes
            ord-buffer-current-collection) new-id-list)))
 
-;;; save, close, and load collections
-
-;;;; translate collection between struct, plist, and json
-(defun ord--collection-to-plist (collection)
-  "COLLECTION should be an ord-collection struct. Returns a
-  plist representing that struct."
-  (list :name (ord-collection-name collection)
-        :id (ord-collection-id collection)
-        :nodes (vconcat (seq-filter (lambda (id) id) (ord-collection-nodes
-                                                      collection)))))
-
-(defun ord--collection-from-plist (collection-plist)
-  "COLLECTION-PLIST should have keys :name, :id, and :nodes. Returns a
-  struct of type org-roam-desktop-collection."
-  (cl-destructuring-bind (&key name id nodes) collection-plist
-    (make-ord-collection :name name :id id :nodes (mapcar 'identity nodes))))
-
-;; (ord--collection-from-plist (ord--collection-to-plist test-collection))
-
-(defun ord--collection-to-json (collection)
-  "COLLECTION should be an ord-collection struct. Returns a
-  json string representing that struct."
-  (json-serialize (ord--collection-to-plist collection)))
-
-;; (ord--collection-to-json test-collection)
-
-(defun ord--collection-from-json (collection-json)
-  "COLLECTION-JSON should be a string of json, with keys name, id, and nodes. Returns a
-  struct of type ord-collection with corresponding
-  values."
-  (ord--collection-from-plist (json-parse-string collection-json
-                                                 :object-type
-                                                 'plist)))
-
-;; (ord--collection-from-json (ord--collection-to-json test-collection))
-
-;;;; save, close, and load functions
-
-(defun ord--default-file-name-for-collection (collection)
-  "The name of a file for a collection is its name plus json file extension."
-  (concat   
-   (ord-collection-name collection)   
-   ".json"))
-
-(defun ord-save-collection (collection)
-  (interactive
-   (list
-    (ord--choose-collection)))
-  (let
-      ((file-name (read-file-name
-                   "Save collection as: "
-                   (file-name-concat org-roam-directory ord-save-dir)
-                   nil nil
-                   (ord--default-file-name-for-collection collection)))
-       (json-str (ord--collection-to-json collection)))
-    (unless (file-directory-p (file-name-directory file-name))
-      (make-directory (file-name-directory file-name) t))
-    (with-temp-file file-name
-      (insert json-str))))
-
-(defun ord-close-collection (collection-to-remove)
-  (interactive (list (ord--choose-collection nil t "Collection to close?: ")))
-  (setq ord-collection-list
-        (seq-remove (lambda (collection)
-                      (eq collection collection-to-remove))
-                    ord-collection-list)))
-
-(defun ord-load-collection ()
-  (interactive)
-  (let ((file-name
-         (read-file-name
-          "Find collection: "
-          (file-name-concat org-roam-directory ord-save-dir)
-          nil
-          t)))
-    (with-temp-buffer
-      (insert-file-contents file-name)
-      (add-to-list
-       'ord-collection-list
-       (ord--collection-from-json (buffer-substring-no-properties
-                                   (point-min) (point-max)))))))
-  
 ;;; viewing collections
 
 (define-derived-mode ord-mode magit-section-mode "OrgRoamDesktop"
@@ -584,92 +502,6 @@ first 6 digits of its id."
             node-ids)
     node-ids-in-region))
 
-
-;;; export collection into org-mode buffer
-
-(defun ord-export-collection-to-org-buffer (collection)
-  "Creates an org-mode buffer displaying COLLECTION. Will be one top level
-entry, whose heading is the name of the section. Then a subentry
-  for each node in COLLECTION. For the subentries, the headline
-  is the node title and the body is the preview section text."
-  (interactive
-   (list
-    (ord--choose-collection)))  
-  (let* ((buffer-name (concat (ord--buffer-name-for-collection
-                               collection) ".org"))
-         (buffer (get-buffer-create buffer-name))
-         ;; need nodes, as opposed to ids, to get names, to sort.
-         (node-list (ord--node-id-list-to-node-list
-                     (ord-collection-nodes collection))) 
-         (sorted-node-list (sort
-                            node-list
-                            ord-mode-sort-function))
-         (ord-preview-display-function #'ord-preview-full-display-function))
-    (with-current-buffer buffer
-      (setq-local ord-buffer-current-collection collection)
-      (erase-buffer)
-      (org-mode)
-      (org-insert-heading)
-      (insert (ord-collection-name collection))
-      (newline)
-      (let ((line-to-delete (make-marker)))
-        (set-marker line-to-delete (point))
-        (org-insert-subheading 1)        
-        (seq-do
-         (lambda (node)
-           (newline)
-           (org-insert-heading nil nil t)
-           (org-demote-subtree)
-           (insert
-            (org-link-make-string
-             (concat "id:" (org-roam-node-id node))
-             (org-roam-node-title node)))
-           (newline 2)
-           (insert (ord-preview-get-contents
-                    (org-roam-node-file node)) "\n")
-           (newline))
-         sorted-node-list)
-        (goto-char (marker-position line-to-delete))
-        (kill-line))
-      (switch-to-buffer-other-window buffer))))
-
-(defun ord-export-collection-to-org-list (collection)
-  (interactive
-   (list
-    (ord--choose-collection)))
-  (let* ((buffer-name (concat (ord--buffer-name-for-collection
-                               collection) "-list" ".org"))
-         (buffer (get-buffer-create buffer-name))
-          ;; need nodes, as opposed to ids, to get names, to sort.
-         (node-list (ord--node-id-list-to-node-list
-                     (ord-collection-nodes collection))) 
-         (sorted-node-list (sort
-                            node-list
-                            ord-mode-sort-function)))
-    (with-current-buffer buffer
-      (setq-local ord-buffer-current-collection collection)
-      (erase-buffer)
-      (org-mode)
-      (let ((first-node (car sorted-node-list)))
-        (insert
-         (concat "- "
-                 (org-link-make-string
-                  (concat "id:" (org-roam-node-id first-node))
-                  (org-roam-node-title first-node)))))
-      (newline)
-      (seq-do
-       (lambda (node)         
-         (org-insert-item)
-          (insert
-            (org-link-make-string
-             (concat "id:" (org-roam-node-id node))
-             (org-roam-node-title node)))         
-           (newline))
-         (cdr sorted-node-list)))
-    (switch-to-buffer-other-window buffer)))
-
-;;; commands used in ord-mode buffers (where collections are displayed)   
-
 (defun ord-mode-refresh-view ()
   (interactive)
   "Refresh the contents of the currently selected org-roam-desktop
@@ -679,6 +511,8 @@ entry, whose heading is the name of the section. Then a subentry
         (magit-section-cache-visibility (magit-current-section))
         (ord--render-collection-view)
         (goto-char point))))
+
+;;; commands used in ord-mode buffers (where collections are displayed)   
 
 (defun ord-add-node-at-point (collection)
   (interactive (list (ord--choose-collection)))
@@ -815,6 +649,172 @@ should be: (SHORT-ANSWER HELP-MESSAGE EXPAND-FUNCTION), where
                node-id-list)
               (ord--add-node-ids-to-collection new-node-id-list collection)
               (ord-mode-refresh-view))))))
+
+
+;;; save, close, and load collections
+
+;;;; translate collection between struct, plist, and json
+(defun ord--collection-to-plist (collection)
+  "COLLECTION should be an ord-collection struct. Returns a
+  plist representing that struct."
+  (list :name (ord-collection-name collection)
+        :id (ord-collection-id collection)
+        :nodes (vconcat (seq-filter (lambda (id) id) (ord-collection-nodes
+                                                      collection)))))
+
+(defun ord--collection-from-plist (collection-plist)
+  "COLLECTION-PLIST should have keys :name, :id, and :nodes. Returns a
+  struct of type org-roam-desktop-collection."
+  (cl-destructuring-bind (&key name id nodes) collection-plist
+    (make-ord-collection :name name :id id :nodes (mapcar 'identity nodes))))
+
+;; (ord--collection-from-plist (ord--collection-to-plist test-collection))
+
+(defun ord--collection-to-json (collection)
+  "COLLECTION should be an ord-collection struct. Returns a
+  json string representing that struct."
+  (json-serialize (ord--collection-to-plist collection)))
+
+;; (ord--collection-to-json test-collection)
+
+(defun ord--collection-from-json (collection-json)
+  "COLLECTION-JSON should be a string of json, with keys name, id, and nodes. Returns a
+  struct of type ord-collection with corresponding
+  values."
+  (ord--collection-from-plist (json-parse-string collection-json
+                                                 :object-type
+                                                 'plist)))
+
+;; (ord--collection-from-json (ord--collection-to-json test-collection))
+
+;;;; save, close, and load functions
+
+(defun ord--default-file-name-for-collection (collection)
+  "The name of a file for a collection is its name plus json file extension."
+  (concat   
+   (ord-collection-name collection)   
+   ".json"))
+
+(defun ord-save-collection (collection)
+  (interactive
+   (list
+    (ord--choose-collection)))
+  (let
+      ((file-name (read-file-name
+                   "Save collection as: "
+                   (file-name-concat org-roam-directory ord-save-dir)
+                   nil nil
+                   (ord--default-file-name-for-collection collection)))
+       (json-str (ord--collection-to-json collection)))
+    (unless (file-directory-p (file-name-directory file-name))
+      (make-directory (file-name-directory file-name) t))
+    (with-temp-file file-name
+      (insert json-str))))
+
+(defun ord-close-collection (collection-to-remove)
+  (interactive (list (ord--choose-collection nil t "Collection to close?: ")))
+  (setq ord-collection-list
+        (seq-remove (lambda (collection)
+                      (eq collection collection-to-remove))
+                    ord-collection-list)))
+
+(defun ord-load-collection ()
+  (interactive)
+  (let ((file-name
+         (read-file-name
+          "Find collection: "
+          (file-name-concat org-roam-directory ord-save-dir)
+          nil
+          t)))
+    (with-temp-buffer
+      (insert-file-contents file-name)
+      (add-to-list
+       'ord-collection-list
+       (ord--collection-from-json (buffer-substring-no-properties
+                                   (point-min) (point-max)))))))
+  
+;;; export collection into org-mode buffer
+
+(defun ord-export-collection-to-org-buffer (collection)
+  "Creates an org-mode buffer displaying COLLECTION. Will be one top level
+entry, whose heading is the name of the section. Then a subentry
+  for each node in COLLECTION. For the subentries, the headline
+  is the node title and the body is the preview section text."
+  (interactive
+   (list
+    (ord--choose-collection)))  
+  (let* ((buffer-name (concat (ord--buffer-name-for-collection
+                               collection) ".org"))
+         (buffer (get-buffer-create buffer-name))
+         ;; need nodes, as opposed to ids, to get names, to sort.
+         (node-list (ord--node-id-list-to-node-list
+                     (ord-collection-nodes collection))) 
+         (sorted-node-list (sort
+                            node-list
+                            ord-mode-sort-function))
+         (ord-preview-display-function #'ord-preview-full-display-function))
+    (with-current-buffer buffer
+      (setq-local ord-buffer-current-collection collection)
+      (erase-buffer)
+      (org-mode)
+      (org-insert-heading)
+      (insert (ord-collection-name collection))
+      (newline)
+      (let ((line-to-delete (make-marker)))
+        (set-marker line-to-delete (point))
+        (org-insert-subheading 1)        
+        (seq-do
+         (lambda (node)
+           (newline)
+           (org-insert-heading nil nil t)
+           (org-demote-subtree)
+           (insert
+            (org-link-make-string
+             (concat "id:" (org-roam-node-id node))
+             (org-roam-node-title node)))
+           (newline 2)
+           (insert (ord-preview-get-contents
+                    (org-roam-node-file node)) "\n")
+           (newline))
+         sorted-node-list)
+        (goto-char (marker-position line-to-delete))
+        (kill-line))
+      (switch-to-buffer-other-window buffer))))
+
+(defun ord-export-collection-to-org-list (collection)
+  (interactive
+   (list
+    (ord--choose-collection)))
+  (let* ((buffer-name (concat (ord--buffer-name-for-collection
+                               collection) "-list" ".org"))
+         (buffer (get-buffer-create buffer-name))
+          ;; need nodes, as opposed to ids, to get names, to sort.
+         (node-list (ord--node-id-list-to-node-list
+                     (ord-collection-nodes collection))) 
+         (sorted-node-list (sort
+                            node-list
+                            ord-mode-sort-function)))
+    (with-current-buffer buffer
+      (setq-local ord-buffer-current-collection collection)
+      (erase-buffer)
+      (org-mode)
+      (let ((first-node (car sorted-node-list)))
+        (insert
+         (concat "- "
+                 (org-link-make-string
+                  (concat "id:" (org-roam-node-id first-node))
+                  (org-roam-node-title first-node)))))
+      (newline)
+      (seq-do
+       (lambda (node)         
+         (org-insert-item)
+          (insert
+            (org-link-make-string
+             (concat "id:" (org-roam-node-id node))
+             (org-roam-node-title node)))         
+           (newline))
+         (cdr sorted-node-list)))
+    (switch-to-buffer-other-window buffer)))
 
 ;;; ord-mode-map
 
