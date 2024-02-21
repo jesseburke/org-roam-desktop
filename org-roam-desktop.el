@@ -54,7 +54,7 @@
                 (upcase (org-roam-node-title second)))))
 
 (defcustom ord-mode-sort-function  
-    'ord--default-sort-function
+  'ord--default-sort-function
   "Function that sorts the entries in a collection, before being
   displayed in an ord-mode buffer."
   :group 'org-roam-desktop
@@ -148,23 +148,23 @@ to the nodes."
  When UNIQUE is t, limit to unique sources."
   (let* ((sql (if unique
                   [:select :distinct [source dest pos properties]
-                   :from links
-                   :where (= dest $s1)
-                   :and (= type "id")
-                   :group :by source
-                   :having (funcall min pos)]
+                           :from links
+                           :where (= dest $s1)
+                           :and (= type "id")
+                           :group :by source
+                           :having (funcall min pos)]
                 [:select [source dest pos properties]
-                 :from links
-                 :where (= dest $s1)
-                 :and (= type "id")]))
+                         :from links
+                         :where (= dest $s1)
+                         :and (= type "id")]))
          (backlinks (org-roam-db-query sql node-id)))
     (cl-loop for backlink in backlinks
              collect (pcase-let ((`(,source-id ,dest-id ,pos ,properties) backlink))
-                        (org-roam-backlink-create
-                         :source-node (org-roam-node-create :id source-id)
-                         :target-node (org-roam-node-create :id dest-id)
-                         :point pos
-                         :properties properties)))))
+                       (org-roam-backlink-create
+                        :source-node (org-roam-node-create :id source-id)
+                        :target-node (org-roam-node-create :id dest-id)
+                        :point pos
+                        :properties properties)))))
 
 ;; (ord--query-for-backlinks "8F0AED6C-CA49-4101-B5E7-D5BAA6DB4B7B"
 ;; :unique t)
@@ -179,9 +179,9 @@ to the nodes."
                           backlink))
                       backlinks))
          (filtered-backlink-ids
-         (seq-map (lambda (backlink) (org-roam-node-id
-                                      (org-roam-backlink-source-node backlink)))                  
-                  filtered-backlinks)))
+          (seq-map (lambda (backlink) (org-roam-node-id
+                                       (org-roam-backlink-source-node backlink)))                  
+                   filtered-backlinks)))
     filtered-backlink-ids))    
 
 ;; (ord--get-backlink-ids "8F0AED6C-CA49-4101-B5E7-D5BAA6DB4B7B")
@@ -191,18 +191,18 @@ to the nodes."
   (let ((min-marker (make-marker))
         (max-marker (make-marker))
         (return-list ()))
-      (set-marker min-marker start)
-      (set-marker max-marker end)
-      (save-mark-and-excursion 
-        (goto-char (marker-position min-marker))
-        (let ((old-point (point)))
-          (org-next-link)
-          (while (and (< old-point (point)) (< (point) (marker-position max-marker)))
-            (setq old-point (point)) 
-            (when-let ((id (ord--get-id-of-id-link)))
-              (push id return-list))
-            (org-next-link))))
-      return-list))
+    (set-marker min-marker start)
+    (set-marker max-marker end)
+    (save-mark-and-excursion 
+      (goto-char (marker-position min-marker))
+      (let ((old-point (point)))
+        (org-next-link)
+        (while (and (< old-point (point)) (< (point) (marker-position max-marker)))
+          (setq old-point (point)) 
+          (when-let ((id (ord--get-id-of-id-link)))
+            (push id return-list))
+          (org-next-link))))
+    return-list))
 
 (defun ord-choose-node-id ()  
   (let ((node (org-roam-node-read nil nil nil t)))
@@ -212,17 +212,17 @@ to the nodes."
 (defun ord-create-collection (collection-name)
   (interactive (list (read-string "name of new collection: """)))
   (while (string= collection-name "")
-      (setq collection-name (read-string "name of new collection (must be non-empty): """)))
+    (setq collection-name (read-string "name of new collection (must be non-empty): """)))
   (let ((new-collection
          (make-ord-collection :name collection-name
-                                     :id (concat "ord-" (org-id-uuid))
-                                     :nodes '()
-                                     :history-stack '())))
+                              :id (concat "ord-" (org-id-uuid))
+                              :nodes '()
+                              :history-stack '())))
     (add-to-list 'ord-collection-list new-collection)
     new-collection))
 
 (cl-defun ord--choose-collection (&optional force-prompt require-match
-  (prompt-string "Choose collection: "))
+                                            (prompt-string "Choose collection: "))
   "To be passed to interactive form, to choose a collection: if there
   is only one collection loaded, then that is it; otherwise, the
   user is prompted to choose from among the names of loaded
@@ -231,18 +231,18 @@ to the nodes."
   (if current-prefix-arg (setq force-prompt t))
   (if (and (not force-prompt) (= (length ord-collection-list) 1))
       (car ord-collection-list)
-      (let* ((extended-list
-              (seq-map (lambda (collection)
-                         (cons
-                          (ord-collection-name collection)
-                          collection))
-                       ord-collection-list))
-             (read-text (completing-read prompt-string
-                                         extended-list nil require-match)))
-             (if-let ((chosen-collection (cdr (assoc read-text
-                                                     extended-list))))
-                 chosen-collection
-               (ord-create-collection read-text)))))
+    (let* ((extended-list
+            (seq-map (lambda (collection)
+                       (cons
+                        (ord-collection-name collection)
+                        collection))
+                     ord-collection-list))
+           (read-text (completing-read prompt-string
+                                       extended-list nil require-match)))
+      (if-let ((chosen-collection (cdr (assoc read-text
+                                              extended-list))))
+          chosen-collection
+        (ord-create-collection read-text)))))
 
 (defun ord--add-node-ids-to-collection (node-ids collection)
   "NODE-IDS is a list. Returns nil if no id's were added (i.e., they
@@ -293,14 +293,14 @@ all were already in the collection), else returns t."
   (if current-prefix-arg (setq force-prompt t))
   (if force-prompt (ord--choose-collection t)
     (if ord-buffer-collection  ord-buffer-collection
-       (ord--choose-collection))))
+      (ord--choose-collection))))
 
 (defun ord-add-node-at-point (collection)
   (interactive (list (ord--local-collection-or-choose)))  
   (unless (ord--add-node-ids-to-collection (ord--node-ids-at-point)
                                            collection)
     (ord--add-node-ids-to-collection (ord--node-ids-at-point t)
-                                           collection))    
+                                     collection))    
   (if ord-refresh-view-function (funcall ord-refresh-view-function)))
 
 (defun ord-mode-choose-entry-from-collection (collection)
@@ -315,17 +315,17 @@ all were already in the collection), else returns t."
                                   (cons title node-id)))
                               node-ids))
          (selected-name (completing-read "Choose entry: "
-                                  node-ids-and-names nil
-                                  'require-match)))   
+                                         node-ids-and-names nil
+                                         'require-match)))   
     (if-let ((selected-id (cdr (assoc selected-name
                                       node-ids-and-names))))
         (goto-char (car (plist-get ord--node-to-position-plist
-                              selected-id))))))
+                                   selected-id))))))
 
 (defun ord-mode-duplicate-collection (collection)  
   (interactive (list (ord--local-collection-or-choose)))
   (let* ((new-name (read-string "Name for new collection: "
-                               (ord-collection-name collection)))
+                                (ord-collection-name collection)))
          (new-collection (ord-create-collection new-name)))
     (ord--add-node-ids-to-collection (ord-collection-nodes collection)
                                      new-collection)
@@ -370,8 +370,8 @@ all were already in the collection), else returns t."
 (defun ord-mode-delete-entries (collection)
   "Delete the entry at point from collection."
   (interactive (list (ord--local-collection-or-choose)))    
-  (let ((nodes-to-delete (if (region-active-p)
-                             (ord--entries-in-region-section)
+  (let ((nodes-to-delete (if (and (region-active-p) ord-entries-in-region-function)
+                             (funcall ord-entries-in-region-function)
                            (ord--node-ids-at-point))))
     (ord--delete-node-ids-from-collection nodes-to-delete
                                           collection))
@@ -399,7 +399,7 @@ collection: ` plus collection name."
 (define-prefix-command 'ord-preview-map)
 (set-keymap-parent 'ord-preview-map ord-section-mode-map)
 (define-key ord-preview-map (kbd "<RET>") 'ord-preview-visit)
-  
+
 (defclass ord-preview-section (org-roam-node-section)
   ((keymap :initform 'ord-preview-map)
    (file :initform nil))
@@ -451,7 +451,7 @@ This function returns the entire body of the entry, with each entry
                (point)))
         (end (point-max)))
     (dotimes (i demote-level)
-             (org-map-entries 'org-do-demote))
+      (org-map-entries 'org-do-demote))
     (string-trim (buffer-substring-no-properties beg end))))
 
 (defcustom ord-preview-display-function #'ord-preview-default-display-function
@@ -546,7 +546,7 @@ to the exact location of the backlink."
                                  (and (<= start section-end) (<= section-end
                                                                  end))
                                  (and (<= section-start start) (<= end
-                                                                    section-end))))
+                                                                   section-end))))
                         (push node-id node-ids-in-region)))))
             node-ids)
     node-ids-in-region))
@@ -559,8 +559,8 @@ to the exact location of the backlink."
     (let ((point (point)))
       (if (magit-current-section)
           (magit-section-cache-visibility (magit-current-section)))
-        (ord--render-collection-view)
-        (goto-char point))))
+      (ord--render-collection-view)
+      (goto-char point))))
 
 (defun ord--create-and-display-collection-view (collection)
   (let* ((buffer-name (ord--section-buffer-name collection))
@@ -568,6 +568,7 @@ to the exact location of the backlink."
     (with-current-buffer buffer      
       (setq-local ord-buffer-collection collection)
       (setq-local ord-refresh-view-function 'ord-refresh-view-section)
+      (setq-local ord-entries-in-region-function 'ord--entries-in-region-section)
       (ord--render-collection-view))
     (switch-to-buffer-other-window buffer)))
 
@@ -614,22 +615,22 @@ the same time:
     (oset section node node)
     (magit-insert-section section (ord-preview-section nil t)
       (let* ((fill-prefix (make-string fill-column-number ?/ ))
-            (filled-string
-             (with-temp-buffer
-               (insert (ord-preview-get-contents (org-roam-node-file node)) "\n")
-               (indent-region (point-min) (point-max) fill-column-number)
-               (buffer-string))))
-      (insert (org-roam-fontify-like-in-org-mode filled-string))
-      (oset section file (org-roam-node-file node))
-      (oset section node node)
-      (insert ?\n)))))
+             (filled-string
+              (with-temp-buffer
+                (insert (ord-preview-get-contents (org-roam-node-file node)) "\n")
+                (indent-region (point-min) (point-max) fill-column-number)
+                (buffer-string))))
+        (insert (org-roam-fontify-like-in-org-mode filled-string))
+        (oset section file (org-roam-node-file node))
+        (oset section node node)
+        (insert ?\n)))))
 
-;;;; expand collection       
+;;; expand collection       
 
 (defvar ord--default-expand-alist
   '(("backlinks" ?b (lambda (node-id) (ord--get-backlink-ids node-id)))
     ("forwardlinks" ?f ord--get-forwardlinks)))
-       
+
 (defcustom ord-mode-expand-alist ord--default-expand-alist
   "Ways to expand the collection. Format of the elements of the alist
 should be: (SHORT-ANSWER HELP-MESSAGE EXPAND-FUNCTION), where
@@ -652,8 +653,8 @@ should be: (SHORT-ANSWER HELP-MESSAGE EXPAND-FUNCTION), where
         (if-let (expand-function (nth 2 (assoc user-selection
                                                ord-mode-expand-alist)))
             ;; want to adjust node-list based on whether region is active.
-            (let* ((node-id-list (if (region-active-p)
-                                     (ord--entries-in-region-section)
+            (let* ((node-id-list (if (and (region-active-p) ord-entries-in-region-function)
+                                     (funcall ord-entries-in-region-function)
                                    (ord-collection-nodes collection)))
                    (new-node-id-list '()))
               (seq-do
@@ -744,7 +745,7 @@ should be: (SHORT-ANSWER HELP-MESSAGE EXPAND-FUNCTION), where
        'ord-collection-list
        (ord--collection-from-json (buffer-substring-no-properties
                                    (point-min) (point-max)))))))
-  
+
 ;;; export collection into org-mode buffer
 
 (defun ord-export-collection-to-org-buffer (collection)
@@ -752,7 +753,7 @@ should be: (SHORT-ANSWER HELP-MESSAGE EXPAND-FUNCTION), where
 entry, whose heading is the name of the section. Then a subentry
   for each node in COLLECTION. For the subentries, the headline
   is the node title and the body is the preview section text."
-   (interactive (list (ord--choose-collection)))
+  (interactive (list (ord--choose-collection)))
   (let* ((buffer-name (concat (ord--section-buffer-name
                                collection) ".org"))
          (buffer (get-buffer-create buffer-name))
@@ -791,40 +792,40 @@ entry, whose heading is the name of the section. Then a subentry
         (kill-line))
       (switch-to-buffer-other-window buffer))))
 
-  (defun ord-export-collection-to-org-list (collection)
-    (interactive (list (ord--choose-collection)))
-    (let* ((buffer-name (concat (ord--section-buffer-name
-                                 collection) "-list" ".org"))
-           (buffer (get-buffer-create buffer-name))
-           ;; need nodes, as opposed to ids, to get names, to sort.
-           (node-list (ord--node-id-list-to-node-list
-                       (ord-collection-nodes collection))) 
-           (sorted-node-list (sort
-                              node-list
-                              ord-mode-sort-function)))
-      (with-current-buffer buffer
-        (setq-local ord-buffer-collection collection)
-        (erase-buffer)
-        (org-mode)
-        (let ((first-node (car sorted-node-list)))
-          (insert
-           (concat "- "
-                   (org-link-make-string
-                    (concat "id:" (org-roam-node-id first-node))
-                    (org-roam-node-title first-node)))))
-        (newline)
-        (seq-do
-         (lambda (node)         
-           (org-insert-item)
-           (insert
-            (org-link-make-string
-             (concat "id:" (org-roam-node-id node))
-             (org-roam-node-title node)))         
-           (newline))
-         (cdr sorted-node-list)))
-      (switch-to-buffer-other-window buffer)))
+(defun ord-export-collection-to-org-list (collection)
+  (interactive (list (ord--choose-collection)))
+  (let* ((buffer-name (concat (ord--section-buffer-name
+                               collection) "-list" ".org"))
+         (buffer (get-buffer-create buffer-name))
+         ;; need nodes, as opposed to ids, to get names, to sort.
+         (node-list (ord--node-id-list-to-node-list
+                     (ord-collection-nodes collection))) 
+         (sorted-node-list (sort
+                            node-list
+                            ord-mode-sort-function)))
+    (with-current-buffer buffer
+      (setq-local ord-buffer-collection collection)
+      (erase-buffer)
+      (org-mode)
+      (let ((first-node (car sorted-node-list)))
+        (insert
+         (concat "- "
+                 (org-link-make-string
+                  (concat "id:" (org-roam-node-id first-node))
+                  (org-roam-node-title first-node)))))
+      (newline)
+      (seq-do
+       (lambda (node)         
+         (org-insert-item)
+         (insert
+          (org-link-make-string
+           (concat "id:" (org-roam-node-id node))
+           (org-roam-node-title node)))         
+         (newline))
+       (cdr sorted-node-list)))
+    (switch-to-buffer-other-window buffer)))
 
-;;; ord-mode-map
+;;; ord-section-mode-map
 
 (define-key ord-section-mode-map (kbd "g")
             (lambda () (interactive) (if ord-refresh-view-function (funcall ord-refresh-view-function))))
