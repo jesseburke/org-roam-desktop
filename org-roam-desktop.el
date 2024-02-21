@@ -66,7 +66,7 @@
   :group 'org-roam-faces)
 
 (cl-defstruct ord-collection
-  name id nodes)
+  name id nodes history-stack)
 
 (defvar ord-collection-list '() "Global list of `loaded` collections.")
 
@@ -217,7 +217,8 @@ to the nodes."
   (let ((new-collection
          (make-ord-collection :name collection-name
                                      :id (concat "ord-" (org-id-uuid))
-                                     :nodes '())))
+                                     :nodes '()
+                                     :history-stack '())))
     (add-to-list 'ord-collection-list new-collection)
     new-collection))
 
@@ -247,23 +248,27 @@ to the nodes."
 (defun ord--add-node-ids-to-collection (node-ids collection)
   "NODE-IDS is a list. Returns nil if no id's were added (i.e., they
 all were already in the collection), else returns t."
-  (let* ((old-node-list (ord-collection-nodes collection))
-         (new-node-id-list (cl-delete-duplicates (append old-node-list node-ids) :test 'equal))
-         (already-there (= (length old-node-list) (length new-node-id-list))))
+  (let* ((old-id-list (ord-collection-nodes collection))
+         (new-id-list (cl-delete-duplicates (append old-id-list node-ids) :test 'equal))
+         (already-there (= (length old-id-list) (length new-id-list))))
     (if already-there nil
-      (setf (ord-collection-nodes collection) new-node-id-list)
+      (setf (ord-collection-nodes collection) new-id-list)
+      (push old-id-list (ord-collection-history-stack collection))
       t)))
 
-(defun ord--delete-node-id-from-collection (node-id-to-delete collection)
-  (let* ((id-list (ord-collection-nodes collection))
+(defun ord--delete-node-ids-from-collection (node-ids-to-delete collection)
+  (let* ((old-id-list (ord-collection-nodes collection))
          (new-id-list
           (seq-filter (lambda (node-id)
-                        (not (string= node-id node-id-to-delete)))
-                      id-list)))
-    (setf (ord-collection-nodes collection) new-id-list)))
+                        (not (memq node-id node-ids-to-delete)))
+                      old-id-list)))
+    (setf (ord-collection-nodes collection) new-id-list)
+    (push old-id-list (ord-collection-history-stack collection))))
+
+;; (ord--delete-node-ids-from-collection
+;;  '("1DC0D5CB-D786-4EAC-B0A6-9D81CB3E6492") (cadr ord-collection-list))
 
 ;;; viewing collections
-
 
 ;; any buffer that is viewing a collection (e.g., magit-section based,
 ;; or tab-list based) will have the following buffer-local variables
@@ -273,20 +278,17 @@ all were already in the collection), else returns t."
   "A buffer local variable: the collection which the buffer is displaying.")
 (put 'ord-buffer-collection 'permanent-local t)
 
-(defvar ord--undo-history-stack '()
-  "A buffer local variable: needed for undo functionality.")
-(put 'ord--undo-history-stack 'permanent-local t)
-
 ;;;; commands used in buffers viewing a collection (that is, buffers
 ;;;; that have a non-nil ord-buffer-collection local value.
 
-(defun ord--local-collection-or-choose ()
-  (if ord-buffer-collection  ord-buffer-collection
-    (ord--choose-collection)))
+(defun ord--local-collection-or-choose (&optional force-prompt)
+  (if current-prefix-arg (setq force-prompt t))
+  (if force-prompt (ord--choose-collection t)
+    (if ord-buffer-collection  ord-buffer-collection
+       (ord--choose-collection))))
 
 (defun ord-add-node-at-point (collection)
-  (interactive (list (ord--local-collection-or-choose)))
-  (push (ord-collection-nodes collection) ord--undo-history-stack)
+  (interactive (list (ord--local-collection-or-choose)))  
   (unless (ord--add-node-ids-to-collection (ord--node-ids-at-point)
                                            collection)
     (ord--add-node-ids-to-collection (ord--node-ids-at-point t)
@@ -296,8 +298,7 @@ all were already in the collection), else returns t."
 (defun ord-mode-choose-entry-from-collection (collection)
   "User can select entry from current collection; after selection
   point is moved there."
-  (interactive (list (ord--local-collection-or-choose)))
-  (push (ord-collection-nodes collection) ord--undo-history-stack)
+  (interactive (list (ord--local-collection-or-choose)))  
   (let* ((node-ids (ord-collection-nodes collection))
          (node-ids-and-names (seq-map
                               (lambda (node-id)
@@ -333,8 +334,7 @@ all were already in the collection), else returns t."
   (org-roam-buffer-display-dedicated (org-roam-node-at-point)))
 
 (defun ord-choose-and-add-node (collection)
-  (interactive (list (ord--local-collection-or-choose)))
-  (push (ord-collection-nodes collection) ord--undo-history-stack)
+  (interactive (list (ord--local-collection-or-choose)))  
   (let* ((node (org-roam-node-read "Entry to add: " nil nil t))
          (node-id (org-roam-node-id node)))
     (ord--add-node-ids-to-collection (list node-id))))
@@ -360,24 +360,18 @@ all were already in the collection), else returns t."
 
 (defun ord-mode-delete-entries (collection)
   "Delete the entry at point from collection."
-  (interactive (list (ord--local-collection-or-choose)))  
-  (push (ord-collection-nodes ord-buffer-collection)
-        ord--undo-history-stack)
+  (interactive (list (ord--local-collection-or-choose)))    
   (let ((nodes-to-delete (if (region-active-p)
                              (ord--entries-in-section-region)
                            (ord--node-ids-at-point))))
-    (seq-do (lambda (node-id)
-              (ord--delete-node-id-from-collection node-id
-                                                   ord-buffer-collection))
-            nodes-to-delete)
-  (ord-section-mode-refresh-view)))
+    (ord--delete-node-ids-from-collection nodes-to-delete
+                                          collection))
+  (ord-section-mode-refresh-view))
 
 (defun ord-undo ()
   (interactive)
   (setf (ord-collection-nodes ord-buffer-collection)
-        (pop ord--undo-history-stack))
-  (ord-section-mode-refresh-view))
-
+        (pop (ord-collection-history-stack ord-buffer-collection))))
 
 ;;;; ord-section-mode
 
@@ -569,10 +563,10 @@ first 6 digits of its id."
   (interactive)  
   (unless (not (derived-mode-p 'ord-section-mode))
     (let ((point (point)))
-        (magit-section-cache-visibility (magit-current-section))
+      (if (magit-current-section)
+          (magit-section-cache-visibility (magit-current-section)))
         (ord--render-collection-view)
         (goto-char point))))
-
 
 (defclass ord-node-section (org-roam-node-section)
   ((keymap :initform 'ord-section-mode-map))
@@ -636,8 +630,7 @@ should be: (SHORT-ANSWER HELP-MESSAGE EXPAND-FUNCTION), where
 (setq ord-mode-expand-alist ord--default-expand-alist)
 
 (defun ord-expand-collection (collection)
-  (interactive (list (ord--local-collection-or-choose)))
-  (push (ord-collection-nodes collection) ord--undo-history-stack)
+  (interactive (list (ord--local-collection-or-choose)))  
   (let* ((answer-list
           (append (seq-map
                    (lambda (alist-member)
