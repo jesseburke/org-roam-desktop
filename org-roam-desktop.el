@@ -208,7 +208,6 @@ to the nodes."
   (let ((node (org-roam-node-read nil nil nil t)))
     (list (org-roam-node-id node))))
 
-
 ;;; basic functions for collections
 (defun ord-create-collection (collection-name)
   (interactive (list (read-string "name of new collection: """)))
@@ -278,6 +277,15 @@ all were already in the collection), else returns t."
   "A buffer local variable: the collection which the buffer is displaying.")
 (put 'ord-buffer-collection 'permanent-local t)
 
+(defvar ord-refresh-view-function nil
+  "A buffer local variable: function to call to refresh view.")
+(put 'ord-refresh-view-function 'permanent-local t)
+
+(defvar ord-entries-in-region-function nil
+  "A buffer local variable: function to call to get entries in current
+  region.")
+(put 'ord-entries-in-region-function 'permanent-local t)
+
 ;;;; commands used in buffers viewing a collection (that is, buffers
 ;;;; that have a non-nil ord-buffer-collection local value.
 
@@ -293,7 +301,7 @@ all were already in the collection), else returns t."
                                            collection)
     (ord--add-node-ids-to-collection (ord--node-ids-at-point t)
                                            collection))    
-  (ord-section-mode-refresh-view))
+  (if ord-refresh-view-function (funcall ord-refresh-view-function)))
 
 (defun ord-mode-choose-entry-from-collection (collection)
   "User can select entry from current collection; after selection
@@ -337,7 +345,8 @@ all were already in the collection), else returns t."
   (interactive (list (ord--local-collection-or-choose)))  
   (let* ((node (org-roam-node-read "Entry to add: " nil nil t))
          (node-id (org-roam-node-id node)))
-    (ord--add-node-ids-to-collection (list node-id))))
+    (ord--add-node-ids-to-collection (list node-id)))
+  (if ord-refresh-view-function (funcall ord-refresh-view-function)))
 
 (defun ord-close-collection-and-buffer ()
   (interactive)
@@ -356,22 +365,23 @@ all were already in the collection), else returns t."
   (let ((new-name (read-string "New name for collection: "
                                (ord-collection-name collection))))
     (setf (ord-collection-name collection) new-name))
-  (ord-section-mode-refresh-view))
+  (if ord-refresh-view-function (funcall ord-refresh-view-function)))
 
 (defun ord-mode-delete-entries (collection)
   "Delete the entry at point from collection."
   (interactive (list (ord--local-collection-or-choose)))    
   (let ((nodes-to-delete (if (region-active-p)
-                             (ord--entries-in-section-region)
+                             (ord--entries-in-region-section)
                            (ord--node-ids-at-point))))
     (ord--delete-node-ids-from-collection nodes-to-delete
                                           collection))
-  (ord-section-mode-refresh-view))
+  (if ord-refresh-view-function (funcall ord-refresh-view-function)))
 
 (defun ord-undo ()
   (interactive)
   (setf (ord-collection-nodes ord-buffer-collection)
-        (pop (ord-collection-history-stack ord-buffer-collection))))
+        (pop (ord-collection-history-stack ord-buffer-collection)))
+  (if ord-refresh-view-function (funcall ord-refresh-view-function)))
 
 (defun ord--base-buffer-name (collection)
   "The name of a buffer for a collection starts with `*ord
@@ -518,13 +528,46 @@ to the exact location of the backlink."
                  (setq-local ord--node-to-position-plist
                              (plist-put ord--node-to-position-plist
                                         (org-roam-node-id node) (list section-start (point))))))
-               sorted-node-list))))))
+             sorted-node-list))))))
+
+(cl-defun ord--entries-in-region-section (&optional (start (region-beginning)) (end (region-end)))
+  "If in an ord-section-mode buffer, return the entries are displayed between
+  START and END, inclusive."  
+  (let ((node-ids (ord-collection-nodes
+                   ord-buffer-collection))
+        (node-ids-in-region '()))
+    (seq-do (lambda (node-id)
+              (if-let ((positions (plist-get ord--node-to-position-plist
+                                             node-id)))
+                  (let ((section-start (car positions))
+                        (section-end (cadr positions)))
+                    (if (and (and section-start section-end)
+                             (or (and (<= start section-start) (<= section-start end))
+                                 (and (<= start section-end) (<= section-end
+                                                                 end))
+                                 (and (<= section-start start) (<= end
+                                                                    section-end))))
+                        (push node-id node-ids-in-region)))))
+            node-ids)
+    node-ids-in-region))
+
+(defun ord-refresh-view-section ()
+  "Refresh the contents of the currently selected org-roam-desktop
+  buffer."
+  (interactive)  
+  (unless (not (derived-mode-p 'ord-section-mode))
+    (let ((point (point)))
+      (if (magit-current-section)
+          (magit-section-cache-visibility (magit-current-section)))
+        (ord--render-collection-view)
+        (goto-char point))))
 
 (defun ord--create-and-display-collection-view (collection)
   (let* ((buffer-name (ord--section-buffer-name collection))
          (buffer (get-buffer-create buffer-name)))        
     (with-current-buffer buffer      
       (setq-local ord-buffer-collection collection)
+      (setq-local ord-refresh-view-function 'ord-refresh-view-section)
       (ord--render-collection-view))
     (switch-to-buffer-other-window buffer)))
 
@@ -535,17 +578,6 @@ to the exact location of the backlink."
     (if (get-buffer buffer-name)
         (switch-to-buffer-other-window buffer-name)
       (ord--create-and-display-collection-view collection))))
-
-(defun ord-section-mode-refresh-view ()
-  "Refresh the contents of the currently selected org-roam-desktop
-  buffer."
-  (interactive)  
-  (unless (not (derived-mode-p 'ord-section-mode))
-    (let ((point (point)))
-      (if (magit-current-section)
-          (magit-section-cache-visibility (magit-current-section)))
-        (ord--render-collection-view)
-        (goto-char point))))
 
 (defclass ord-node-section (org-roam-node-section)
   ((keymap :initform 'ord-section-mode-map))
@@ -592,7 +624,6 @@ the same time:
       (oset section node node)
       (insert ?\n)))))
 
-
 ;;;; expand collection       
 
 (defvar ord--default-expand-alist
@@ -622,7 +653,7 @@ should be: (SHORT-ANSWER HELP-MESSAGE EXPAND-FUNCTION), where
                                                ord-mode-expand-alist)))
             ;; want to adjust node-list based on whether region is active.
             (let* ((node-id-list (if (region-active-p)
-                                     (ord--entries-in-section-region)
+                                     (ord--entries-in-region-section)
                                    (ord-collection-nodes collection)))
                    (new-node-id-list '()))
               (seq-do
@@ -630,8 +661,7 @@ should be: (SHORT-ANSWER HELP-MESSAGE EXPAND-FUNCTION), where
                  (setq new-node-id-list (append new-node-id-list (funcall expand-function node-id))))
                node-id-list)
               (ord--add-node-ids-to-collection new-node-id-list collection)
-              (ord-section-mode-refresh-view))))))
-
+              (if ord-refresh-view-function (funcall ord-refresh-view-function)))))))
 
 ;;; save, close, and load collections
 
@@ -797,8 +827,8 @@ entry, whose heading is the name of the section. Then a subentry
 ;;; ord-mode-map
 
 (define-key ord-section-mode-map (kbd "g")
-            #'ord-section-mode-refresh-view)
-(define-key ord-preview-map [remap org-roam-buffer-refresh] #'ord-section-mode-refresh-view)
+            (lambda () (interactive) (if ord-refresh-view-function (funcall ord-refresh-view-function))))
+(define-key ord-preview-map [remap org-roam-buffer-refresh] (lambda () (interactive) (if ord-refresh-view-function (funcall ord-refresh-view-function))))
 (define-key ord-section-mode-map (kbd "k")
             #'ord-mode-delete-entries)
 (define-key ord-section-mode-map (kbd "a") #'ord-add-node-at-point)
