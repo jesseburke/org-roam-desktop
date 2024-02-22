@@ -208,12 +208,13 @@ to the nodes."
   (let ((node (org-roam-node-read nil nil nil t)))
     (list (org-roam-node-id node))))
 
-;; TODO make this faster
 (defun ord--node-name-from-id (node-id)
-  (org-roam-node-title (org-roam-node-from-id node-id)))
+  (let* ((sql [:select [title]
+                         :from nodes
+                         :where (= id $s1)]))
+    (car (car (org-roam-db-query sql node-id)))))
 
-;; (ord--node-name-from-id "29235CB5-7D53-4D2B-9112-61A3DCF4A66C")
-
+;; (ord--node-name-from-id "29235CB5-7D53-4D2B-9112-61A3DCF4A66C")
 
 ;;; basic functions for collections
 (defun ord-create-collection (collection-name)
