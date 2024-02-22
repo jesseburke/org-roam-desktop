@@ -116,8 +116,8 @@ to the nodes."
         (ord--links-in-region)
       (if (ord--get-id-of-id-link)
           (list (ord--get-id-of-id-link))
-        (if (org-roam-node-at-point)
-            (list (org-roam-node-id (org-roam-node-at-point)))
+        (if ord-node-at-point-in-view
+            (list (org-roam-node-id (funcall ord-node-at-point-in-view)))
           (ord-choose-node-id))))))
 
 (defun ord--start-of-file-node ()
@@ -298,6 +298,14 @@ all were already in the collection), else returns t."
 in the collection being displayed.")
 (put 'ord-goto-entry-function 'permanent-local t)
 
+(defvar ord-node-at-point-in-view nil
+"A buffer local variable: function that returns the id of node at point in current view buffer,
+e.g., the entry of the current row in list mode, or the entry being
+previewed in section mode.")
+(put 'ord-node-at-point-in-view 'permanent-local t)
+
+(define-prefix-command 'ord-view-map)
+
 ;;;; commands for view buffers
 ;; (buffers that have a non-nil ord-buffer-collection local value)
                  
@@ -444,7 +452,9 @@ should be: (SHORT-ANSWER HELP-MESSAGE EXPAND-FUNCTION), where
 ;;;; section-view
 
 (define-derived-mode ord-section-view-mode magit-section-mode "OrgRoamDesktop"
-  "Major mode for displaying collection of org-roam nodes.")
+  "Major mode for displaying collection of org-roam nodes."
+  (setq ord-section-view-mode-map (make-sparse-keymap))
+  (set-keymap-parent ord-section-view-mode-map ord-view-map)) 
 
 ;;;;; preview sections, mostly copied from org-roam
 (define-prefix-command 'ord-preview-map)
@@ -672,37 +682,74 @@ the same time:
       (setq-local ord-refresh-view-function 'ord-refresh-view-section)
       (setq-local ord-entries-in-region-function
                   'ord--entries-in-region-section)
-      (setq-local ord-goto-entry-function 'ord-goto-entry-function-section)
+      (setq-local ord-goto-entry-function
+                  'ord-goto-entry-function-section)
+      (setq-local ord-node-at-point-in-view 'org-roam-node-at-point)
       (ord--section-view-render))
     (switch-to-buffer-other-window buffer)))
 
 ;;;; tabulated-list view
 
+;; seems to slow things down a lot
+(defun ord--list-sort (first second)
+  "FIRST and SECOND are elements of =tabulated-list-entries=."
+  (let ((first-id (car first))
+        (second-id (car second)))
+  (funcall ord-mode-sort-function (org-roam-node-from-id first-id) (org-roam-node-from-id second-id))))
+
 (define-derived-mode ord-list-view-mode tabulated-list-mode "org-roam desktop"
   "Major mode for displaying collection of org-roam nodes."
-  (setq tabulated-list-format [("Entry name" 15 t)
-                               ("Backlinks"      7 t)])  
-  (setq tabulated-list-sort-key (cons "Entry name" nil))
-  (add-hook 'tabulated-list-revert-hook
-            (lambda () (if ord-refresh-view-function (funcall ord-refresh-view-function)))))
+  (setq ord-list-view-mode-map (make-sparse-keymap))
+  (set-keymap-parent ord-list-view-mode-map ord-view-map)
+  (if-let (collection-name (ord-collection-name
+                            ord-buffer-collection))      
+      (let ((list-name
+             (concat (ord-collection-name ord-buffer-collection) 
+             " ("
+             (number-to-string (length (ord-collection-nodes
+                                        ord-buffer-collection)))
+             " entries)")))
+        (setq tabulated-list-format (vector `(,list-name 50 t)
+                               '("Backlinks"      15 t)))  
+    (setq tabulated-list-sort-key (cons list-name nil))
+    (add-hook 'tabulated-list-revert-hook
+              (lambda () (if ord-refresh-view-function (funcall
+                                                        ord-refresh-view-function)))))))
 
 (defun ord--list-buffer-name (collection)  
   (concat
    (ord--base-buffer-name collection)
    " (list view)"))
 
+(cl-defun ord--entries-in-region-list (&optional (start (region-beginning)) (end (region-end)))
+  "If in an ord-list-view-mode buffer, return the entries are displayed between
+  START and END, inclusive."    
+   (let ((node-ids-in-region '()))
+    (save-excursion      
+      (goto-char start)
+      (while (< (point) end)        
+        (push (tabulated-list-get-id) node-ids-in-region)
+        (next-line)))
+    node-ids-in-region))
+                   
 (defun ord--list-view-render (collection)
   (let ((inhibit-read-only t))
     (erase-buffer)
-    (ord-list-view-mode)
+    (ord-list-view-mode)    
     (setq tabulated-list-entries nil)
+    (tabulated-list-init-header)
     (dolist (node-id (ord-collection-nodes collection))
       (let ((name (ord--node-name-from-id node-id))
             (backlinks-str (number-to-string (length
   (ord--get-backlink-ids node-id)))))
       (push (list node-id (vector name backlinks-str)) tabulated-list-entries))
-    (tabulated-list-print))))
+      (tabulated-list-print))))
 
+(defun ord-refresh-view-list ()
+  (let ((point (point)))
+    (ord--list-view-render ord-buffer-collection)    
+    (goto-char point)))
+    
 (defun ord-list-view (collection)
   (interactive (list
                 (ord--local-collection-or-choose)))
@@ -710,9 +757,11 @@ the same time:
          (buffer (get-buffer-create buffer-name)))
     (with-current-buffer buffer      
       (setq-local ord-buffer-collection collection)
-      ;;(setq-local ord-refresh-view-function 'ord-refresh-view-section)
-      ;;(setq-local ord-entries-in-region-function
-      ;; 'ord--entries-in-region-section)
+      (setq-local ord-entries-in-region-function
+                  'ord--entries-in-region-list)
+      (setq-local ord-node-at-point-in-view (lambda ()
+                                              (org-roam-node-from-id (tabulated-list-get-id))))
+      (setq-local ord-refresh-view-function 'ord-refresh-view-list)
       ;; (setq-local ord-goto-entry-function 'ord-goto-entry-function-section)
       (ord--list-view-render collection))
     (switch-to-buffer-other-window buffer)))
@@ -880,33 +929,33 @@ entry, whose heading is the name of the section. Then a subentry
 
 ;;; ord-section-mode-map
 
-(define-key ord-section-mode-map (kbd "g")
+(define-key ord-view-map (kbd "g")
             (lambda () (interactive) (if ord-refresh-view-function (funcall ord-refresh-view-function))))
 (define-key ord-preview-map [remap org-roam-buffer-refresh] (lambda () (interactive) (if ord-refresh-view-function (funcall ord-refresh-view-function))))
-(define-key ord-section-mode-map (kbd "k")
+(define-key ord-view-map (kbd "k")
             #'ord-mode-delete-entries)
-(define-key ord-section-mode-map (kbd "a") #'ord-add-node-at-point)
-(define-key ord-section-mode-map (kbd "s")
+(define-key ord-view-map (kbd "a") #'ord-add-node-at-point)
+(define-key ord-view-map (kbd "s")
             #'ord-mode-save-collection)
-(define-key ord-section-mode-map (kbd "b")
+(define-key ord-view-map (kbd "b")
             #'ord-mode-show-org-roam-buffer)
-(define-key ord-section-mode-map (kbd "<RET>")
+(define-key ord-view-map (kbd "<RET>")
             (lambda () (interactive)
               (org-roam-node-visit (org-roam-node-from-id (car (ord--node-ids-at-point))) t)))
-(define-key ord-section-mode-map (kbd "t")            
+(define-key ord-view-map (kbd "t")            
             (lambda () (interactive)
               (other-tab-prefix)
               (org-roam-node-visit (org-roam-node-from-id (car
                                                            (ord--node-ids-at-point))))))
-(define-key ord-section-mode-map (kbd "c") #'ord-mode-choose-entry-from-collection)
-(define-key ord-section-mode-map (kbd "o")
+(define-key ord-view-map (kbd "c") #'ord-mode-choose-entry-from-collection)
+(define-key ord-view-map (kbd "o")
             #'ord-export-collection-to-org-buffer)
-(define-key ord-section-mode-map (kbd "w") #'ord-close-collection-and-buffer)
-(define-key ord-section-mode-map (kbd "v") #'ord-view-other-collection)
-(define-key ord-section-mode-map (kbd "r") #'ord-rename-collection)
-(define-key ord-section-mode-map (kbd "e") #'ord-expand-collection)
-(define-key ord-section-mode-map (kbd "u") #'ord-undo)
-(define-key ord-section-mode-map (kbd "d") #'ord-mode-duplicate-collection)
+(define-key ord-view-map (kbd "w") #'ord-close-collection-and-buffer)
+(define-key ord-view-map (kbd "v") #'ord-view-other-collection)
+(define-key ord-view-map (kbd "r") #'ord-rename-collection)
+(define-key ord-view-map (kbd "e") #'ord-expand-collection)
+(define-key ord-view-map (kbd "u") #'ord-undo)
+(define-key ord-view-map (kbd "d") #'ord-mode-duplicate-collection)
 
 
 ;;; ord-map, to be used anywhere in emacs
