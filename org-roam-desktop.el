@@ -208,6 +208,13 @@ to the nodes."
   (let ((node (org-roam-node-read nil nil nil t)))
     (list (org-roam-node-id node))))
 
+;; TODO make this faster
+(defun ord--node-name-from-id (node-id)
+  (org-roam-node-title (org-roam-node-from-id node-id)))
+
+;; (ord--node-name-from-id "29235CB5-7D53-4D2B-9112-61A3DCF4A66C")
+
+
 ;;; basic functions for collections
 (defun ord-create-collection (collection-name)
   (interactive (list (read-string "name of new collection: """)))
@@ -436,7 +443,7 @@ should be: (SHORT-ANSWER HELP-MESSAGE EXPAND-FUNCTION), where
 
 ;;;; section-view
 
-(define-derived-mode ord-section-mode magit-section-mode "OrgRoamDesktop"
+(define-derived-mode ord-section-view-mode magit-section-mode "OrgRoamDesktop"
   "Major mode for displaying collection of org-roam nodes.")
 
 ;;;;; preview sections, mostly copied from org-roam
@@ -591,7 +598,7 @@ the same time:
   (setq-local ord--section-view-node-to-position-plist '())
   (let ((inhibit-read-only t))
     (erase-buffer)
-    (ord-section-mode)
+    (ord-section-view-mode)
     (org-roam-buffer-set-header-line-format
      (concat (ord-collection-name ord-buffer-collection) 
              " ("
@@ -620,7 +627,7 @@ the same time:
              sorted-node-list))))))
 
 (cl-defun ord--entries-in-region-section (&optional (start (region-beginning)) (end (region-end)))
-  "If in an ord-section-mode buffer, return the entries are displayed between
+  "If in an ord-section-view-mode buffer, return the entries are displayed between
   START and END, inclusive."  
   (let ((node-ids (ord-collection-nodes
                    ord-buffer-collection))
@@ -644,7 +651,7 @@ the same time:
   "Refresh the contents of the currently selected org-roam-desktop
   buffer."
   (interactive)  
-  (unless (not (derived-mode-p 'ord-section-mode))
+  (unless (not (derived-mode-p 'ord-section-view-mode))
     (let ((point (point)))
       (if (magit-current-section)
           (magit-section-cache-visibility (magit-current-section)))
@@ -670,6 +677,45 @@ the same time:
     (switch-to-buffer-other-window buffer)))
 
 ;;;; tabulated-list view
+
+(define-derived-mode ord-list-view-mode tabulated-list-mode "org-roam desktop"
+  "Major mode for displaying collection of org-roam nodes."
+  (setq tabulated-list-format [("Entry name" 15 t)
+                               ("Backlinks"      7 t)])  
+  (setq tabulated-list-sort-key (cons "Entry name" nil))
+  (add-hook 'tabulated-list-revert-hook
+            (lambda () (if ord-refresh-view-function (funcall ord-refresh-view-function)))))
+
+(defun ord--list-buffer-name (collection)  
+  (concat
+   (ord--base-buffer-name collection)
+   " (list view)"))
+
+(defun ord--list-view-render (collection)
+  (let ((inhibit-read-only t))
+    (erase-buffer)
+    (ord-list-view-mode)
+    (setq tabulated-list-entries nil)
+    (dolist (node-id (ord-collection-nodes collection))
+      (let ((name (ord--node-name-from-id node-id))
+            (backlinks-str (number-to-string (length
+  (ord--get-backlink-ids node-id)))))
+      (push (list node-id (vector name backlinks-str)) tabulated-list-entries))
+    (tabulated-list-print))))
+
+(defun ord-list-view (collection)
+  (interactive (list
+                (ord--local-collection-or-choose)))
+  (let* ((buffer-name (ord--list-buffer-name collection))
+         (buffer (get-buffer-create buffer-name)))
+    (with-current-buffer buffer      
+      (setq-local ord-buffer-collection collection)
+      ;;(setq-local ord-refresh-view-function 'ord-refresh-view-section)
+      ;;(setq-local ord-entries-in-region-function
+      ;; 'ord--entries-in-region-section)
+      ;; (setq-local ord-goto-entry-function 'ord-goto-entry-function-section)
+      (ord--list-view-render collection))
+    (switch-to-buffer-other-window buffer)))
 
 ;;; save, close, and load collections
 
@@ -878,8 +924,10 @@ entry, whose heading is the name of the section. Then a subentry
             #'ord-add-node-at-point)
 (define-key ord-map (kbd "M-v")
             #'ord-section-view)
+(define-key ord-map (kbd "M-l")
+            #'ord-list-view)
 (define-key ord-map (kbd "M-s") #'ord-save-collection)
-(define-key ord-map (kbd "M-l") #'ord-load-collection)
+(define-key ord-map (kbd "M-o") #'ord-load-collection)
 (define-key ord-map (kbd "M-k") #'ord-close-all-collections)
 (define-key ord-map (kbd "M-e") #'ord-mode-choose-entry-from-collection)
 
