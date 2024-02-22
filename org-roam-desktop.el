@@ -291,9 +291,9 @@ all were already in the collection), else returns t."
 in the collection being displayed.")
 (put 'ord-goto-entry-function 'permanent-local t)
 
-;;;; commands used in buffers viewing a collection (that is, buffers
-;;;; that have a non-nil ord-buffer-collection local value.
-
+;;;; commands for view buffers
+;; (buffers that have a non-nil ord-buffer-collection local value)
+                 
 (defun ord--local-collection-or-choose (&optional force-prompt)
   (if current-prefix-arg (setq force-prompt t))
   (if force-prompt (ord--choose-collection t)
@@ -333,7 +333,7 @@ in the collection being displayed.")
          (new-collection (ord-create-collection new-name)))
     (ord--add-node-ids-to-collection (ord-collection-nodes collection)
                                      new-collection)
-    (ord-view-collection new-collection)))
+    (ord-section-view new-collection)))
 
 (defun ord-mode-save-collection (collection)
   (interactive (list (ord--local-collection-or-choose)))  
@@ -362,7 +362,7 @@ in the collection being displayed.")
 (defun ord-view-other-collection ()
   (interactive)
   (let ((collection (ord--choose-collection t)))
-    (ord-view-collection collection)))
+    (ord-section-view collection)))
 
 (defun ord-rename-collection (collection)  
   (interactive (list (ord--local-collection-or-choose)))
@@ -394,7 +394,47 @@ collection: ` plus collection name."
    "*ord collection: "
    (ord-collection-name collection)))
 
-;;;; ord-section-mode
+;;;;; expand collection       
+
+(defvar ord--default-expand-alist
+  '(("backlinks" ?b (lambda (node-id) (ord--get-backlink-ids node-id)))
+    ("forwardlinks" ?f ord--get-forwardlinks)))
+
+(defcustom ord-mode-expand-alist ord--default-expand-alist
+  "Ways to expand the collection. Format of the elements of the alist
+should be: (SHORT-ANSWER HELP-MESSAGE EXPAND-FUNCTION), where
+  EXPAND-FUNCTION takes a node-id, and returns a list of node-ids."
+  :group 'org-roam-desktop
+  :type 'elisp)
+
+(setq ord-mode-expand-alist ord--default-expand-alist)
+
+(defun ord-expand-collection (collection)
+  (interactive (list (ord--local-collection-or-choose)))  
+  (let* ((answer-list
+          (append (seq-map
+                   (lambda (alist-member)
+                     (list (car alist-member) (cadr alist-member)  (car alist-member)))             
+                   ord-mode-expand-alist) '(("quit" ?q "exit"))))
+         (user-selection
+          (read-answer "Expand collection by: " answer-list)))
+    (if (not (string= user-selection "quit"))
+        (if-let (expand-function (nth 2 (assoc user-selection
+                                               ord-mode-expand-alist)))
+            ;; want to adjust node-list based on whether region is active.
+            (let* ((node-id-list (if (and (region-active-p) ord-entries-in-region-function)
+                                     (funcall ord-entries-in-region-function)
+                                   (ord-collection-nodes collection)))
+                   (new-node-id-list '()))
+              (seq-do
+               (lambda (node-id)               
+                 (setq new-node-id-list (append new-node-id-list (funcall expand-function node-id))))
+               node-id-list)
+              (ord--add-node-ids-to-collection new-node-id-list collection)
+              (if ord-refresh-view-function (funcall ord-refresh-view-function)))))))
+
+
+;;;; section-view
 
 (define-derived-mode ord-section-mode magit-section-mode "OrgRoamDesktop"
   "Major mode for displaying collection of org-roam nodes.")
@@ -481,10 +521,50 @@ to the exact location of the backlink."
 
 ;;;;; rendering the buffer
 
-(defun ord--section-buffer-name (collection)  
-  (concat
-   (ord--base-buffer-name collection)
-   " (section view)"))
+(defclass ord-node-section (org-roam-node-section)
+  ((keymap :initform 'ord-section-mode-map))
+  "An `org-roam-node-section' based class, changing the initial keymap
+  of the former.")
+
+(cl-defun ord-node-insert-section (&key node (fill-column-number 2))
+  "Insert section for a link from SOURCE-NODE to some other node.
+The other node is normally `org-roam-buffer-current-node'.
+
+SOURCE-NODE is an `org-roam-node' that links or references with
+the other node.
+
+POINT is a character position where the link is located in
+SOURCE-NODE's file.
+
+PROPERTIES (a plist) contains additional information about the
+link.
+
+Despite the name, this function actually inserts 2 sections at
+the same time:
+
+1. `org-roam-node-section' for a heading that describes
+   SOURCE-NODE. Acts as a parent section of the following one.
+
+2. `ord-preview-section' for a preview content that comes
+   from SOURCE-NODE's file for the link (that references the
+   other node) at POINT. Acts a child section of the previous
+   one."
+  (magit-insert-section section (ord-node-section nil t)
+    (insert (concat (propertize (concat "  " (org-roam-node-title node))
+                                'font-lock-face 'ord-entry-title)))
+    (magit-insert-heading)
+    (oset section node node)
+    (magit-insert-section section (ord-preview-section nil t)
+      (let* ((fill-prefix (make-string fill-column-number ?/ ))
+             (filled-string
+              (with-temp-buffer
+                (insert (ord-preview-get-contents (org-roam-node-file node)) "\n")
+                (indent-region (point-min) (point-max) fill-column-number)
+                (buffer-string))))
+        (insert (org-roam-fontify-like-in-org-mode filled-string))
+        (oset section file (org-roam-node-file node))
+        (oset section node node)
+        (insert ?\n)))))
 
 (defun ord-section-view-function-default (node)
   (ord-node-insert-section
@@ -501,6 +581,11 @@ to the exact location of the backlink."
   which give positions in the buffer. Used for moving point to a
   given section.")
 (put 'ord--section-view-node-to-position-plist 'permanent-local t)
+
+(defun ord--section-buffer-name (collection)  
+  (concat
+   (ord--base-buffer-name collection)
+   " (section view)"))
 
 (defun ord--section-view-render ()
   (setq-local ord--section-view-node-to-position-plist '())
@@ -570,7 +655,9 @@ to the exact location of the backlink."
   (goto-char (car (plist-get ord--section-view-node-to-position-plist
                              node-id))))
 
-(defun ord--section-view (collection)
+(defun ord-section-view (collection)
+  (interactive (list
+                (ord--local-collection-or-choose)))
   (let* ((buffer-name (ord--section-buffer-name collection))
          (buffer (get-buffer-create buffer-name)))        
     (with-current-buffer buffer      
@@ -582,97 +669,7 @@ to the exact location of the backlink."
       (ord--section-view-render))
     (switch-to-buffer-other-window buffer)))
 
-(defun ord-view-collection (collection)
-  (interactive (list
-                (ord--local-collection-or-choose)))
-  (let ((buffer-name (ord--section-buffer-name collection)))
-    (if (get-buffer buffer-name)
-        (switch-to-buffer-other-window buffer-name)
-      (ord--section-view collection))))
-
-(defclass ord-node-section (org-roam-node-section)
-  ((keymap :initform 'ord-section-mode-map))
-  "An `org-roam-node-section' based class, changing the initial keymap
-  of the former.")
-
-(cl-defun ord-node-insert-section (&key node (fill-column-number 2))
-  "Insert section for a link from SOURCE-NODE to some other node.
-The other node is normally `org-roam-buffer-current-node'.
-
-SOURCE-NODE is an `org-roam-node' that links or references with
-the other node.
-
-POINT is a character position where the link is located in
-SOURCE-NODE's file.
-
-PROPERTIES (a plist) contains additional information about the
-link.
-
-Despite the name, this function actually inserts 2 sections at
-the same time:
-
-1. `org-roam-node-section' for a heading that describes
-   SOURCE-NODE. Acts as a parent section of the following one.
-
-2. `ord-preview-section' for a preview content that comes
-   from SOURCE-NODE's file for the link (that references the
-   other node) at POINT. Acts a child section of the previous
-   one."
-  (magit-insert-section section (ord-node-section nil t)
-    (insert (concat (propertize (concat "  " (org-roam-node-title node))
-                                'font-lock-face 'ord-entry-title)))
-    (magit-insert-heading)
-    (oset section node node)
-    (magit-insert-section section (ord-preview-section nil t)
-      (let* ((fill-prefix (make-string fill-column-number ?/ ))
-             (filled-string
-              (with-temp-buffer
-                (insert (ord-preview-get-contents (org-roam-node-file node)) "\n")
-                (indent-region (point-min) (point-max) fill-column-number)
-                (buffer-string))))
-        (insert (org-roam-fontify-like-in-org-mode filled-string))
-        (oset section file (org-roam-node-file node))
-        (oset section node node)
-        (insert ?\n)))))
-
-;;; expand collection       
-
-(defvar ord--default-expand-alist
-  '(("backlinks" ?b (lambda (node-id) (ord--get-backlink-ids node-id)))
-    ("forwardlinks" ?f ord--get-forwardlinks)))
-
-(defcustom ord-mode-expand-alist ord--default-expand-alist
-  "Ways to expand the collection. Format of the elements of the alist
-should be: (SHORT-ANSWER HELP-MESSAGE EXPAND-FUNCTION), where
-  EXPAND-FUNCTION takes a node-id, and returns a list of node-ids."
-  :group 'org-roam-desktop
-  :type 'elisp)
-
-(setq ord-mode-expand-alist ord--default-expand-alist)
-
-(defun ord-expand-collection (collection)
-  (interactive (list (ord--local-collection-or-choose)))  
-  (let* ((answer-list
-          (append (seq-map
-                   (lambda (alist-member)
-                     (list (car alist-member) (cadr alist-member)  (car alist-member)))             
-                   ord-mode-expand-alist) '(("quit" ?q "exit"))))
-         (user-selection
-          (read-answer "Expand collection by: " answer-list)))
-    (if (not (string= user-selection "quit"))
-        (if-let (expand-function (nth 2 (assoc user-selection
-                                               ord-mode-expand-alist)))
-            ;; want to adjust node-list based on whether region is active.
-            (let* ((node-id-list (if (and (region-active-p) ord-entries-in-region-function)
-                                     (funcall ord-entries-in-region-function)
-                                   (ord-collection-nodes collection)))
-                   (new-node-id-list '()))
-              (seq-do
-               (lambda (node-id)               
-                 (setq new-node-id-list (append new-node-id-list (funcall expand-function node-id))))
-               node-id-list)
-              (ord--add-node-ids-to-collection new-node-id-list collection)
-              (if ord-refresh-view-function (funcall ord-refresh-view-function)))))))
+;;;; tabulated-list view
 
 ;;; save, close, and load collections
 
@@ -880,7 +877,7 @@ entry, whose heading is the name of the section. Then a subentry
 (define-key ord-map (kbd "M-a")
             #'ord-add-node-at-point)
 (define-key ord-map (kbd "M-v")
-            #'ord-view-collection)
+            #'ord-section-view)
 (define-key ord-map (kbd "M-s") #'ord-save-collection)
 (define-key ord-map (kbd "M-l") #'ord-load-collection)
 (define-key ord-map (kbd "M-k") #'ord-close-all-collections)
