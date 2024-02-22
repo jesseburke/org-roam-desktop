@@ -41,8 +41,8 @@
   :group 'org-roam-desktop
   :type 'string)
 
-(defcustom ord-mode-entry-section-functions
-  (list 'ord-mode-entry-section-function-default)
+(defcustom ord-section-view-functions
+  (list 'ord-section-view-function-default)
   "Function that draws the section for each entry in a collection."
   :group 'org-roam-desktop
   :type 'function)
@@ -286,6 +286,11 @@ all were already in the collection), else returns t."
   region.")
 (put 'ord-entries-in-region-function 'permanent-local t)
 
+(defvar ord-goto-entry-function nil
+"A buffer local variable: function to call to move point to an entry
+in the collection being displayed.")
+(put 'ord-goto-entry-function 'permanent-local t)
+
 ;;;; commands used in buffers viewing a collection (that is, buffers
 ;;;; that have a non-nil ord-buffer-collection local value.
 
@@ -319,8 +324,7 @@ all were already in the collection), else returns t."
                                          'require-match)))   
     (if-let ((selected-id (cdr (assoc selected-name
                                       node-ids-and-names))))
-        (goto-char (car (plist-get ord--node-to-position-plist
-                                   selected-id))))))
+        (if ord-goto-entry-function (funcall ord-goto-entry-function selected-id)))))
 
 (defun ord-mode-duplicate-collection (collection)  
   (interactive (list (ord--local-collection-or-choose)))
@@ -482,24 +486,24 @@ to the exact location of the backlink."
    (ord--base-buffer-name collection)
    " (section view)"))
 
-(defun ord-mode-entry-section-function-default (node)
+(defun ord-section-view-function-default (node)
   (ord-node-insert-section
    :node node))
 
-(setq ord-mode-entry-section-functions (list             
-                                        'ord-mode-entry-section-function-default))
+(setq ord-section-view-functions (list             
+                                        'ord-section-view-function-default))
 
-(defvar ord--node-to-position-plist '()
+(defvar ord--section-view-node-to-position-plist '()
   "A buffer local variable: stores where the section of a given node
   starts and ends in the current buffer. More specifically, the
   keys of the plist are the id's of the entries in the
   collection, and the value at an id has the form (start . end),
   which give positions in the buffer. Used for moving point to a
   given section.")
-(put 'ord--node-to-position-plist 'permanent-local t)
+(put 'ord--section-view-node-to-position-plist 'permanent-local t)
 
-(defun ord--render-collection-view ()
-  (setq-local ord--node-to-position-plist '())
+(defun ord--section-view-render ()
+  (setq-local ord--section-view-node-to-position-plist '())
   (let ((inhibit-read-only t))
     (erase-buffer)
     (ord-section-mode)
@@ -524,9 +528,9 @@ to the exact location of the backlink."
                  (seq-do
                   (lambda (func)
                     (funcall func node))
-                  ord-mode-entry-section-functions)
-                 (setq-local ord--node-to-position-plist
-                             (plist-put ord--node-to-position-plist
+                  ord-section-view-functions)
+                 (setq-local ord--section-view-node-to-position-plist
+                             (plist-put ord--section-view-node-to-position-plist
                                         (org-roam-node-id node) (list section-start (point))))))
              sorted-node-list))))))
 
@@ -537,7 +541,7 @@ to the exact location of the backlink."
                    ord-buffer-collection))
         (node-ids-in-region '()))
     (seq-do (lambda (node-id)
-              (if-let ((positions (plist-get ord--node-to-position-plist
+              (if-let ((positions (plist-get ord--section-view-node-to-position-plist
                                              node-id)))
                   (let ((section-start (car positions))
                         (section-end (cadr positions)))
@@ -559,17 +563,23 @@ to the exact location of the backlink."
     (let ((point (point)))
       (if (magit-current-section)
           (magit-section-cache-visibility (magit-current-section)))
-      (ord--render-collection-view)
+      (ord--section-view-render)
       (goto-char point))))
 
-(defun ord--create-and-display-collection-view (collection)
+(defun ord-goto-entry-function-section (node-id)
+  (goto-char (car (plist-get ord--section-view-node-to-position-plist
+                             node-id))))
+
+(defun ord--section-view (collection)
   (let* ((buffer-name (ord--section-buffer-name collection))
          (buffer (get-buffer-create buffer-name)))        
     (with-current-buffer buffer      
       (setq-local ord-buffer-collection collection)
       (setq-local ord-refresh-view-function 'ord-refresh-view-section)
-      (setq-local ord-entries-in-region-function 'ord--entries-in-region-section)
-      (ord--render-collection-view))
+      (setq-local ord-entries-in-region-function
+                  'ord--entries-in-region-section)
+      (setq-local ord-goto-entry-function 'ord-goto-entry-function-section)
+      (ord--section-view-render))
     (switch-to-buffer-other-window buffer)))
 
 (defun ord-view-collection (collection)
@@ -578,7 +588,7 @@ to the exact location of the backlink."
   (let ((buffer-name (ord--section-buffer-name collection)))
     (if (get-buffer buffer-name)
         (switch-to-buffer-other-window buffer-name)
-      (ord--create-and-display-collection-view collection))))
+      (ord--section-view collection))))
 
 (defclass ord-node-section (org-roam-node-section)
   ((keymap :initform 'ord-section-mode-map))
