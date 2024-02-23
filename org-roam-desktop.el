@@ -47,20 +47,22 @@
   :group 'org-roam-desktop
   :type 'function)
 
-(defun ord--default-sort-function (first second)
-  "FIRST and SECOND are nodes."
-  (not (string< (upcase (org-roam-node-title
-                         first))
-                (upcase (org-roam-node-title second)))))
+(defun ord--default-id-sort-function (first-id second-id)
+  (string< (upcase (ord--node-name-from-id first-id))
+                (upcase (ord--node-name-from-id second-id))))
 
-(defcustom ord-mode-sort-function  
-  'ord--default-sort-function
+(defcustom ord-id-sort-function  
+  'ord--default-id-sort-function
   "Function that sorts the entries in a collection, before being
-  displayed in an ord-mode buffer."
+  displayed in an ord-mode buffer. The function should accept two
+  node-ids, and return true if the first should come before the
+  second, and nil otherwise."
   :group 'org-roam-desktop
   :type 'function)
 
-(defface ord-entry-title
+(setq ord-id-sort-function 'ord--default-id-sort-function)
+
+(defface ord-entry-title-face
   '((t :weight bold))
   "Face for Org-roam titles."
   :group 'org-roam-faces)
@@ -71,24 +73,6 @@
 (defvar ord-collection-list '() "Global list of `loaded` collections.")
 
 ;;; org(-roam) utility functions
-
-(defun ord--node-id-list-to-node-list (id-list)
-  "ID-LIST is a sequence of ids; returns a list of nodes corresponding
-to the ids."
-  (let ((node-list ()))
-    (seq-do (lambda (node-id)
-              (when-let ((node (org-roam-node-from-id node-id)))
-                (push node node-list))) id-list)
-    node-list))
-
-(defun ord--node-list-to-id-list (node-list)
-  "NODE-LIST is a sequence of nodes; returns a list of ids corresponding
-to the nodes."
-  (let ((node-id-list ()))
-    (seq-do (lambda (node)
-              (when-let ((node-id (org-roam-node-id node)))
-                (push node-id node-id-list))) node-list)
-    node-id-list))
 
 (defun ord--get-link-address ()
   "When point is at an org-link, returns the link address as string."
@@ -219,6 +203,14 @@ to the nodes."
     (car (car (org-roam-db-query sql node-id)))))
 
 ;; (ord--node-name-from-id "29235CB5-7D53-4D2B-9112-61A3DCF4A66C")
+
+(defun ord--file-from-id (node-id)
+  (let* ((sql [:select [file]
+                         :from nodes
+                         :where (= id $s1)]))
+    (car (car (org-roam-db-query sql node-id)))))
+
+;; (ord--file-from-id "29235CB5-7D53-4D2B-9112-61A3DCF4A66C")
 
 ;;; basic functions for collections
 (defun ord-create-collection (collection-name)
@@ -547,7 +539,7 @@ to the exact location of the backlink."
   "An `org-roam-node-section' based class, changing the initial keymap
   of the former.")
 
-(cl-defun ord-node-insert-section (&key node (fill-column-number 2))
+(cl-defun ord-node-insert-section (&key node-id (fill-column-number 2))
   "Insert section for a link from SOURCE-NODE to some other node.
 The other node is normally `org-roam-buffer-current-node'.
 
@@ -571,26 +563,26 @@ the same time:
    other node) at POINT. Acts a child section of the previous
    one."
   (magit-insert-section section (ord-node-section nil t)
-    (insert (concat (propertize (concat "  " (org-roam-node-title node))
-                                'font-lock-face 'ord-entry-title)))
+    (insert (concat (propertize (concat "  " (ord--node-name-from-id node-id))
+                                'font-lock-face 'ord-entry-title-face)))
     (magit-insert-heading)
-    (oset section node node)
+    (oset section node (org-roam-node-from-id node-id))
     (magit-insert-section section (ord-preview-section nil t)
       (let* ((fill-prefix (make-string fill-column-number ?/ ))
              (filled-string
               (with-temp-buffer
-                (insert (ord-preview-get-contents (org-roam-node-file node)) "\n")
+                (insert (ord-preview-get-contents (ord--file-from-id node-id)) "\n")
                 (indent-region (point-min) (point-max) fill-column-number)
                 (buffer-string))))
         (insert filled-string)
         ;;(insert (org-roam-fontify-like-in-org-mode filled-string))
-        (oset section file (org-roam-node-file node))
-        (oset section node node)
+        (oset section file (ord--file-from-id node-id))
+        (oset section node (org-roam-node-from-id node-id))
         (insert ?\n)))))
 
-(defun ord-section-view-function-default (node)
+(defun ord-section-view-function-default (node-id)
   (ord-node-insert-section
-   :node node))
+   :node-id node-id))
 
 (setq ord-section-view-functions (list             
                                         'ord-section-view-function-default))
@@ -622,24 +614,23 @@ the same time:
              " entries)"))
     (if-let ((node-ids (ord-collection-nodes
                         ord-buffer-collection)))
-        (let* ((node-list (ord--node-id-list-to-node-list node-ids))
-               (sorted-node-list (sort
-                                  node-list
-                                  ord-mode-sort-function)))
+        (let ((sorted-node-id-list (sort
+                                  node-ids
+                                  ord-id-sort-function)))
           (magit-insert-section (root)
             (magit-insert-heading)      
             (seq-do
-             (lambda (node)
+             (lambda (node-id)
                (let ((section-start (point))
                      section-end)                 
                  (seq-do
                   (lambda (func)
-                    (funcall func node))
+                    (funcall func node-id))
                   ord-section-view-functions)
                  (setq-local ord--section-view-node-to-position-plist
                              (plist-put ord--section-view-node-to-position-plist
-                                        (org-roam-node-id node) (list section-start (point))))))
-             sorted-node-list))))))
+                                        node-id (list section-start (point))))))
+             sorted-node-id-list))))))
 
 (cl-defun ord--entries-in-region-section (&optional (start (region-beginning)) (end (region-end)))
   "If in an ord-section-view-mode buffer, return the entries are displayed between
@@ -700,7 +691,7 @@ the same time:
   "FIRST and SECOND are elements of =tabulated-list-entries=."
   (let ((first-id (car first))
         (second-id (car second)))
-  (funcall ord-mode-sort-function (org-roam-node-from-id first-id) (org-roam-node-from-id second-id))))
+  (funcall ord-id-sort-function first-id second-id)))
 
 (define-derived-mode ord-list-view-mode tabulated-list-mode "org-roam desktop"
   "Major mode for displaying collection of org-roam nodes."
@@ -862,13 +853,11 @@ entry, whose heading is the name of the section. Then a subentry
   (interactive (list (ord--choose-collection)))
   (let* ((buffer-name (concat (ord--section-buffer-name
                                collection) ".org"))
-         (buffer (get-buffer-create buffer-name))
-         ;; need nodes, as opposed to ids, to get names, to sort.
-         (node-list (ord--node-id-list-to-node-list
-                     (ord-collection-nodes collection))) 
-         (sorted-node-list (sort
-                            node-list
-                            ord-mode-sort-function))
+         (buffer (get-buffer-create buffer-name))         
+         (node-id-list (ord-collection-nodes collection)) 
+         (sorted-node-id-list (sort
+                            node-id-list
+                            ord-id-sort-function))
          (ord-preview-display-function #'ord-preview-full-display-function))
     (with-current-buffer buffer
       (setq-local ord-buffer-collection collection)
@@ -881,19 +870,19 @@ entry, whose heading is the name of the section. Then a subentry
         (set-marker line-to-delete (point))
         (org-insert-subheading 1)        
         (seq-do
-         (lambda (node)
+         (lambda (node-id)
            (newline)
            (org-insert-heading nil nil t)
            (org-demote-subtree)
            (insert
             (org-link-make-string
-             (concat "id:" (org-roam-node-id node))
-             (org-roam-node-title node)))
+             (concat "id:" node-id)
+             (ord--node-name-from-id node-id)))
            (newline 2)
            (insert (ord-preview-get-contents
-                    (org-roam-node-file node)) "\n")
+                    (ord--file-from-id node-id)) "\n")
            (newline))
-         sorted-node-list)
+         sorted-node-id-list)
         (goto-char (marker-position line-to-delete))
         (kill-line))
       (switch-to-buffer-other-window buffer))))
@@ -903,32 +892,30 @@ entry, whose heading is the name of the section. Then a subentry
   (let* ((buffer-name (concat (ord--section-buffer-name
                                collection) "-list" ".org"))
          (buffer (get-buffer-create buffer-name))
-         ;; need nodes, as opposed to ids, to get names, to sort.
-         (node-list (ord--node-id-list-to-node-list
-                     (ord-collection-nodes collection))) 
-         (sorted-node-list (sort
-                            node-list
-                            ord-mode-sort-function)))
+         (node-id-list (ord-collection-nodes collection)) 
+         (sorted-node-id-list (sort
+                               node-id-list
+                               ord-id-sort-function)))         
     (with-current-buffer buffer
       (setq-local ord-buffer-collection collection)
       (erase-buffer)
       (org-mode)
-      (let ((first-node (car sorted-node-list)))
+      (let ((first-node-id (car sorted-node-id-list)))
         (insert
          (concat "- "
                  (org-link-make-string
-                  (concat "id:" (org-roam-node-id first-node))
-                  (org-roam-node-title first-node)))))
+                  (concat "id:" first-node-id)
+                  (ord--node-name-from-id first-node-id)))))
       (newline)
       (seq-do
-       (lambda (node)         
+       (lambda (node-id)         
          (org-insert-item)
          (insert
           (org-link-make-string
-           (concat "id:" (org-roam-node-id node))
-           (org-roam-node-title node)))         
+           (concat "id:" node-id)
+           (ord--node-name-from-id node-id)))         
          (newline))
-       (cdr sorted-node-list)))
+       (cdr sorted-node-id-list)))
     (switch-to-buffer-other-window buffer)))
 
 ;;; ord-section-mode-map
