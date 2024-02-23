@@ -133,6 +133,27 @@
 ;; following should break/be nil, since node no longer exists
 ;; (ord--query-forlinks "CF3888AA-2432-4E72-9356-5187B802815D")
 
+;; (cl-defun ord--query-forlinks-of-list (node-ids)
+;;   "Return the ids of the forward links for all ids in NODE-IDS."
+;;   (let* ((sql [:select [source dest pos properties]
+;;                        :from links
+;;                        :where (in $s1 source)
+;;                        :and (= type "id")])
+;;          (forlinks (org-roam-db-query sql node-id)))
+;;     (cl-loop for forlink in forlinks
+;;              collect (pcase-let ((`(,source-id ,dest-id ,pos ,properties) forlink))
+;;                        dest-id))))
+
+;; (setq test-list '("29235CB5-7D53-4D2B-9112-61A3DCF4A66C" "8F0AED6C-CA49-4101-B5E7-D5BAA6DB4B7B"))
+;; (setq test-str (mapconcat (lambda (name) (format "'%s'" name)) test-list ","))
+
+;; (ord--query-forlinks-of-list test-str)
+
+;; (ord--query-forlinks "8F0AED6C-CA49-4101-B5E7-D5BAA6DB4B7B")
+
+;; following should break/be nil, since node no longer exists
+;; (ord--query-forlinks "CF3888AA-2432-4E72-9356-5187B802815D")
+
 (cl-defun ord--query-backlinks (node-id &key unique)
   "Return the backlinks for NODE-ID.
 
@@ -407,6 +428,17 @@ collection: ` plus collection name."
   (concat
    "*ord collection: "
    (ord-collection-name collection)))
+
+(defun ord--goto-collection-notes (collection)
+  (interactive (list (ord--local-collection-or-choose)))
+  (let* ((notes-buffer-name
+          (concat (ord--base-buffer-name collection) " (notes)")))
+    (if (get-buffer notes-buffer-name)
+        (display-buffer (get-buffer notes-buffer-name))
+      (let ((buffer (get-buffer-create notes-buffer-name)))
+        (with-current-buffer buffer
+          (org-mode))
+        (display-buffer buffer)))))
 
 ;;;;; expand collection       
 
@@ -985,6 +1017,6 @@ entry, whose heading is the name of the section. Then a subentry
 (define-key ord-map (kbd "M-o") #'ord-load-collection)
 (define-key ord-map (kbd "M-k") #'ord-close-all-collections)
 (define-key ord-map (kbd "M-e") #'ord-mode-choose-entry-from-collection)
-
+(define-key ord-map (kbd "M-n") #'ord--goto-collection-notes)
 (provide 'org-roam-desktop)
 
