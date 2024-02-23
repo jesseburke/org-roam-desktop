@@ -712,8 +712,8 @@ the same time:
              (number-to-string (length (ord-collection-node-ids
                                         ord-buffer-collection)))
              " entries)")))
-        (setq tabulated-list-format (vector `(,list-name 50 t)
-                               '("Backlinks"      15 t)))  
+        (setq tabulated-list-format (vector `(,list-name 40 t)
+                               '("Backlinks"      10 t) '("Forlinks"      10 t)))  
     (setq tabulated-list-sort-key (cons list-name nil))
     (add-hook 'tabulated-list-revert-hook
               (lambda () (if ord-refresh-view-function (funcall
@@ -744,8 +744,10 @@ the same time:
     (dolist (node-id (seq-filter 'ord--node-name-from-id (ord-collection-node-ids collection)))
       (let ((name (ord--node-name-from-id node-id))
             (backlinks-str (number-to-string (length
-                                              (ord--get-backlink-ids node-id)))))
-        (push (list node-id (vector name backlinks-str)) tabulated-list-entries))
+                                              (ord--get-backlink-ids node-id))))
+            (forlinks-str (number-to-string (length
+                                              (ord--query-forlinks node-id)))))
+        (push (list node-id (vector name backlinks-str forlinks-str)) tabulated-list-entries))
       (tabulated-list-print))))
 
 (defun ord-refresh-view-list ()
