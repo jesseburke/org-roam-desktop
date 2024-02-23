@@ -67,8 +67,8 @@
   "Face for Org-roam titles."
   :group 'org-roam-faces)
 
-(cl-defstruct ord-collection
-  name id nodes history-stack)
+(cl-defstruct ord-collection  
+  name id node-ids marked-node-ids history-stack)
 
 (defvar ord-collection-list '() "Global list of `loaded` collections.")
 
@@ -204,6 +204,10 @@
 
 ;; (ord--node-name-from-id "29235CB5-7D53-4D2B-9112-61A3DCF4A66C")
 
+;; (setq first-id "39AB6401-0CCE-4784-85C5-BC7C6CB3F85C")
+;; (org-roam-node-title (org-roam-node-from-id first-id))
+;; (ord--node-name-from-id "39AB6401-0CCE-4784-85C5-BC7C6CB3F85C")
+
 (defun ord--file-from-id (node-id)
   (let* ((sql [:select [file]
                          :from nodes
@@ -220,7 +224,8 @@
   (let ((new-collection
          (make-ord-collection :name collection-name
                               :id (concat "ord-" (org-id-uuid))
-                              :nodes '()
+                              :node-ids '()
+                              :marked-node-ids '()
                               :history-stack '())))
     (add-to-list 'ord-collection-list new-collection)
     new-collection))
@@ -251,25 +256,25 @@
 (defun ord--add-node-ids-to-collection (node-ids collection)
   "NODE-IDS is a list. Returns nil if no id's were added (i.e., they
 all were already in the collection), else returns t."
-  (let* ((old-id-list (ord-collection-nodes collection))
+  (let* ((old-id-list (ord-collection-node-ids collection))
          (new-id-list (cl-delete-duplicates (append old-id-list node-ids) :test 'equal))
          (already-there (= (length old-id-list) (length new-id-list))))
     (if already-there nil
-      (setf (ord-collection-nodes collection) new-id-list)
+      (setf (ord-collection-node-ids collection) new-id-list)
       (push old-id-list (ord-collection-history-stack collection))
       t)))
 
 (defun ord--delete-node-ids-from-collection (node-ids-to-delete collection)
-  (let* ((old-id-list (ord-collection-nodes collection))
+  (let* ((old-id-list (ord-collection-node-ids collection))
          (new-id-list
           (seq-filter (lambda (node-id)
                         (not (memq node-id node-ids-to-delete)))
                       old-id-list)))
-    (setf (ord-collection-nodes collection) new-id-list)
+    (setf (ord-collection-node-ids collection) new-id-list)
     (push old-id-list (ord-collection-history-stack collection))))
 
-;; (ord--delete-node-ids-from-collection
-;;  '("1DC0D5CB-D786-4EAC-B0A6-9D81CB3E6492") (cadr ord-collection-list))
+ ;;(ord--delete-node-ids-from-collection
+  ;;'("1DC0D5CB-D786-4EAC-B0A6-9D81CB3E6492") (cadr ord-collection-list))
 
 ;;; viewing collections
 
@@ -324,7 +329,7 @@ previewed in section mode.")
   "User can select entry from current collection; after selection
   point is moved there."
   (interactive (list (ord--local-collection-or-choose)))  
-  (let* ((node-ids (ord-collection-nodes collection))
+  (let* ((node-ids (ord-collection-node-ids collection))
          (node-ids-and-names (seq-map
                               (lambda (node-id)
                                 (let ((name (ord--node-name-from-id node-id)))
@@ -342,7 +347,7 @@ previewed in section mode.")
   (let* ((new-name (read-string "Name for new collection: "
                                 (ord-collection-name collection)))
          (new-collection (ord-create-collection new-name)))
-    (ord--add-node-ids-to-collection (ord-collection-nodes collection)
+    (ord--add-node-ids-to-collection (ord-collection-node-ids collection)
                                      new-collection)
     (ord-section-view new-collection)))
 
@@ -394,7 +399,7 @@ previewed in section mode.")
 
 (defun ord-undo ()
   (interactive)
-  (setf (ord-collection-nodes ord-buffer-collection)
+  (setf (ord-collection-node-ids ord-buffer-collection)
         (pop (ord-collection-history-stack ord-buffer-collection)))
   (if ord-refresh-view-function (funcall ord-refresh-view-function)))
 
@@ -435,7 +440,7 @@ should be: (SHORT-ANSWER HELP-MESSAGE EXPAND-FUNCTION), where
             ;; want to adjust node-list based on whether region is active.
             (let* ((node-id-list (if (and (region-active-p) ord-entries-in-region-function)
                                      (funcall ord-entries-in-region-function)
-                                   (ord-collection-nodes collection)))
+                                   (ord-collection-node-ids collection)))
                    (new-node-id-list '()))
               (seq-do
                (lambda (node-id)               
@@ -573,9 +578,8 @@ the same time:
               (with-temp-buffer
                 (insert (ord-preview-get-contents (ord--file-from-id node-id)) "\n")
                 (indent-region (point-min) (point-max) fill-column-number)
-                (buffer-string))))
-        (insert filled-string)
-        ;;(insert (org-roam-fontify-like-in-org-mode filled-string))
+                (buffer-string))))        
+        (insert (org-roam-fontify-like-in-org-mode filled-string))
         (oset section file (ord--file-from-id node-id))
         (oset section node (org-roam-node-from-id node-id))
         (insert ?\n)))))
@@ -609,10 +613,10 @@ the same time:
     (org-roam-buffer-set-header-line-format
      (concat (ord-collection-name ord-buffer-collection) 
              " ("
-             (number-to-string (length (ord-collection-nodes
+             (number-to-string (length (ord-collection-node-ids
                                         ord-buffer-collection)))
              " entries)"))
-    (if-let ((node-ids (ord-collection-nodes
+    (if-let ((node-ids (ord-collection-node-ids
                         ord-buffer-collection)))
         (let ((sorted-node-id-list (sort
                                   node-ids
@@ -635,7 +639,7 @@ the same time:
 (cl-defun ord--entries-in-region-section (&optional (start (region-beginning)) (end (region-end)))
   "If in an ord-section-view-mode buffer, return the entries are displayed between
   START and END, inclusive."  
-  (let ((node-ids (ord-collection-nodes
+  (let ((node-ids (ord-collection-node-ids
                    ord-buffer-collection))
         (node-ids-in-region '()))
     (seq-do (lambda (node-id)
@@ -702,7 +706,7 @@ the same time:
       (let ((list-name
              (concat (ord-collection-name ord-buffer-collection) 
              " ("
-             (number-to-string (length (ord-collection-nodes
+             (number-to-string (length (ord-collection-node-ids
                                         ord-buffer-collection)))
              " entries)")))
         (setq tabulated-list-format (vector `(,list-name 50 t)
@@ -734,7 +738,7 @@ the same time:
     (ord-list-view-mode)    
     (setq tabulated-list-entries nil)
     (tabulated-list-init-header)
-    (dolist (node-id (ord-collection-nodes collection))
+    (dolist (node-id (ord-collection-node-ids collection))
       (let ((name (ord--node-name-from-id node-id))
             (backlinks-str (number-to-string (length
   (ord--get-backlink-ids node-id)))))
@@ -769,14 +773,16 @@ the same time:
   plist representing that struct."
   (list :name (ord-collection-name collection)
         :id (ord-collection-id collection)
-        :nodes (vconcat (seq-filter (lambda (id) id) (ord-collection-nodes
+        :nodes (vconcat (seq-filter (lambda (id) id) (ord-collection-node-ids
                                                       collection)))))
 
 (defun ord--collection-from-plist (collection-plist)
   "COLLECTION-PLIST should have keys :name, :id, and :nodes. Returns a
   struct of type org-roam-desktop-collection."
   (cl-destructuring-bind (&key name id nodes) collection-plist
-    (make-ord-collection :name name :id id :nodes (mapcar 'identity nodes))))
+    (make-ord-collection :name name :id id
+                         :node-ids (mapcar 'identity nodes)
+                         :marked-node-ids '())))
 
 ;; (ord--collection-from-plist (ord--collection-to-plist test-collection))
 
@@ -854,7 +860,7 @@ entry, whose heading is the name of the section. Then a subentry
   (let* ((buffer-name (concat (ord--section-buffer-name
                                collection) ".org"))
          (buffer (get-buffer-create buffer-name))         
-         (node-id-list (ord-collection-nodes collection)) 
+         (node-id-list (ord-collection-node-ids collection)) 
          (sorted-node-id-list (sort
                             node-id-list
                             ord-id-sort-function))
@@ -892,7 +898,7 @@ entry, whose heading is the name of the section. Then a subentry
   (let* ((buffer-name (concat (ord--section-buffer-name
                                collection) "-list" ".org"))
          (buffer (get-buffer-create buffer-name))
-         (node-id-list (ord-collection-nodes collection)) 
+         (node-id-list (ord-collection-node-ids collection)) 
          (sorted-node-id-list (sort
                                node-id-list
                                ord-id-sort-function)))         
@@ -947,6 +953,7 @@ entry, whose heading is the name of the section. Then a subentry
 (define-key ord-view-map (kbd "e") #'ord-expand-collection)
 (define-key ord-view-map (kbd "u") #'ord-undo)
 (define-key ord-view-map (kbd "d") #'ord-mode-duplicate-collection)
+(define-key ord-view-map (kbd "q") #'quit-window)
 
 
 ;;; ord-map, to be used anywhere in emacs
