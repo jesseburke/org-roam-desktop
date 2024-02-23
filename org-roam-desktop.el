@@ -354,11 +354,6 @@ previewed in section mode.")
                                      new-collection)
     (ord-section-view new-collection)))
 
-(defun ord-mode-save-collection (collection)
-  (interactive (list (ord--local-collection-or-choose)))  
-  "Save the current collection."
-  (ord-save-collection collection))
-
 (defun ord-mode-show-org-roam-buffer ()
   (interactive)
   "Show the org-roam-mode buffer for entry point is on."
@@ -816,10 +811,8 @@ the same time:
    (ord-collection-name collection)   
    ".json"))
 
-(defun ord-save-collection (collection)
-  (interactive
-   (list
-    (ord--choose-collection)))
+(defun ord-save-collection (collection)  
+  (interactive (list (ord--local-collection-or-choose)))
   (let
       ((file-name (read-file-name
                    "Save collection as: "
@@ -861,7 +854,7 @@ the same time:
 entry, whose heading is the name of the section. Then a subentry
   for each node in COLLECTION. For the subentries, the headline
   is the node title and the body is the preview section text."
-  (interactive (list (ord--choose-collection)))
+  (interactive (list (ord--local-collection-or-choose)))
   (let* ((buffer-name (concat (ord--section-buffer-name
                                collection) ".org"))
          (buffer (get-buffer-create buffer-name))         
@@ -899,7 +892,7 @@ entry, whose heading is the name of the section. Then a subentry
       (switch-to-buffer-other-window buffer))))
 
 (defun ord-export-collection-to-org-list (collection)
-  (interactive (list (ord--choose-collection)))
+  (interactive (list (ord--local-collection-or-choose)))
   (let* ((buffer-name (concat (ord--section-buffer-name
                                collection) "-list" ".org"))
          (buffer (get-buffer-create buffer-name))
@@ -938,7 +931,7 @@ entry, whose heading is the name of the section. Then a subentry
             #'ord-mode-delete-entries)
 (define-key ord-view-map (kbd "a") #'ord-add-node-at-point)
 (define-key ord-view-map (kbd "s")
-            #'ord-mode-save-collection)
+            #'ord-save-collection)
 (define-key ord-view-map (kbd "b")
             #'ord-mode-show-org-roam-buffer)
 (define-key ord-view-map (kbd "<RET>")
