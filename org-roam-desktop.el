@@ -172,32 +172,24 @@ to the nodes."
          (backlinks (org-roam-db-query sql node-id)))
     (cl-loop for backlink in backlinks
              collect (pcase-let ((`(,source-id ,dest-id ,pos ,properties) backlink))
-                       (org-roam-backlink-create
-                        :source-node (org-roam-node-create :id source-id)
-                        :target-node (org-roam-node-create :id dest-id)
-                        :point pos
-                        :properties properties)))))
+                       source-id))))
 
-;; (ord--query-backlinks "8F0AED6C-CA49-4101-B5E7-D5BAA6DB4B7B"
-;; :unique t)
+;; (ord--query-backlinks "8F0AED6C-CA49-4101-B5E7-D5BAA6DB4B7B")
 
 (defun ord--get-backlink-ids (node-id &optional show-backlink-p)
-  (let* ((backlinks (ord--query-backlinks node-id :unique t))
-         (filtered-backlinks
-          (seq-filter (lambda (backlink)
+  "SHOW-BACKLINK-P is a filter function, that takes a node-id and
+  returns nil or t."
+  (let* ((backlink-ids (ord--query-backlinks node-id :unique t))
+         (filtered-backlink-ids
+          (seq-filter (lambda (node-id)
                         (when (or (null show-backlink-p)
                                   (and (not (null show-backlink-p))
-                                       (funcall show-backlink-p backlink)))
-                          backlink))
-                      backlinks))
-         (filtered-backlink-ids
-          (seq-map (lambda (backlink) (org-roam-node-id
-                                       (org-roam-backlink-source-node backlink)))                  
-                   filtered-backlinks)))
-    filtered-backlink-ids))    
+                                       (funcall show-backlink-p node-id)))
+                          node-id))
+                      backlink-ids)))
+         filtered-backlink-ids))         
 
 ;; (ord--get-backlink-ids "8F0AED6C-CA49-4101-B5E7-D5BAA6DB4B7B")
-
 
 (cl-defun ord--links-in-region (&optional (start (region-beginning)) (end (region-end)))
   (let ((min-marker (make-marker))
@@ -591,7 +583,8 @@ the same time:
                 (insert (ord-preview-get-contents (org-roam-node-file node)) "\n")
                 (indent-region (point-min) (point-max) fill-column-number)
                 (buffer-string))))
-        (insert (org-roam-fontify-like-in-org-mode filled-string))
+        (insert filled-string)
+        ;;(insert (org-roam-fontify-like-in-org-mode filled-string))
         (oset section file (org-roam-node-file node))
         (oset section node node)
         (insert ?\n)))))
