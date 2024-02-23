@@ -131,17 +131,29 @@ to the nodes."
     (org-fold--hide-drawers (point-min) (point))
     (point)))
 
-(defun ord--get-forwardlinks (node-id)
-  (if-let (node (org-roam-node-from-id node-id))
-      (with-temp-buffer
-        (insert-file-contents (org-roam-node-file node))
-        (org-mode)
-        (goto-char (ord--start-of-file-node))        
-        (let ((beg (point))
-              (end (point-max)))
-          (ord--links-in-region beg end)))))
+(cl-defun ord--query-forlinks (node-id)
+  "Return the ids of the forward links for NODE-ID."
+  (let* ((sql (if unique
+                  [:select :distinct [source dest pos properties]
+                           :from links
+                           :where (= source $s1)
+                           :and (= type "id")
+                           :group :by source
+                           :having (funcall min pos)]
+                [:select [source dest pos properties]
+                         :from links
+                         :where (= source $s1)
+                         :and (= type "id")]))
+         (forlinks (org-roam-db-query sql node-id)))
+    (cl-loop for forlink in forlinks
+             collect (pcase-let ((`(,source-id ,dest-id ,pos ,properties) forlink))
+                       dest-id))))
 
-(cl-defun ord--query-for-backlinks (node-id &key unique)
+;; (ord--query-forlinks "29235CB5-7D53-4D2B-9112-61A3DCF4A66C")
+;; (ord--query-forlinks "8F0AED6C-CA49-4101-B5E7-D5BAA6DB4B7B")
+
+
+(cl-defun ord--query-backlinks (node-id &key unique)
   "Return the backlinks for NODE-ID.
 
  When UNIQUE is nil, show all positions where references are found.
@@ -166,11 +178,11 @@ to the nodes."
                         :point pos
                         :properties properties)))))
 
-;; (ord--query-for-backlinks "8F0AED6C-CA49-4101-B5E7-D5BAA6DB4B7B"
+;; (ord--query-backlinks "8F0AED6C-CA49-4101-B5E7-D5BAA6DB4B7B"
 ;; :unique t)
 
 (defun ord--get-backlink-ids (node-id &optional show-backlink-p)
-  (let* ((backlinks (ord--query-for-backlinks node-id :unique t))
+  (let* ((backlinks (ord--query-backlinks node-id :unique t))
          (filtered-backlinks
           (seq-filter (lambda (backlink)
                         (when (or (null show-backlink-p)
@@ -414,7 +426,7 @@ collection: ` plus collection name."
 
 (defvar ord--default-expand-alist
   '(("backlinks" ?b (lambda (node-id) (ord--get-backlink-ids node-id)))
-    ("forwardlinks" ?f ord--get-forwardlinks)))
+    ("forwardlinks" ?f ord--query-forlinks)))
 
 (defcustom ord-mode-expand-alist ord--default-expand-alist
   "Ways to expand the collection. Format of the elements of the alist
