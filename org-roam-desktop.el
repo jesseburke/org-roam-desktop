@@ -712,7 +712,7 @@ the same time:
              (number-to-string (length (ord-collection-node-ids
                                         ord-buffer-collection)))
              " entries)")))
-        (setq tabulated-list-format (vector `(,list-name 40 t)
+        (setq tabulated-list-format (vector `(,list-name 40 ord--list-sort)
                                '("Backlinks"      10 t) '("Forlinks"      10 t)))  
     (setq tabulated-list-sort-key (cons list-name nil))
     (add-hook 'tabulated-list-revert-hook
