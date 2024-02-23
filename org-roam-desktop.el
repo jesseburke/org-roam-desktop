@@ -48,8 +48,9 @@
   :type 'function)
 
 (defun ord--default-id-sort-function (first-id second-id)
-  (string< (upcase (ord--node-name-from-id first-id))
-                (upcase (ord--node-name-from-id second-id))))
+  (if-let (first-name (ord--node-name-from-id first-id))
+      (if-let (second-name (ord--node-name-from-id second-id))
+          (string< (upcase first-name) (upcase second-name)))))
 
 (defcustom ord-id-sort-function  
   'ord--default-id-sort-function
@@ -117,17 +118,10 @@
 
 (cl-defun ord--query-forlinks (node-id)
   "Return the ids of the forward links for NODE-ID."
-  (let* ((sql (if unique
-                  [:select :distinct [source dest pos properties]
-                           :from links
-                           :where (= source $s1)
-                           :and (= type "id")
-                           :group :by source
-                           :having (funcall min pos)]
-                [:select [source dest pos properties]
-                         :from links
-                         :where (= source $s1)
-                         :and (= type "id")]))
+  (let* ((sql [:select [source dest pos properties]
+                       :from links
+                       :where (= source $s1)
+                       :and (= type "id")])
          (forlinks (org-roam-db-query sql node-id)))
     (cl-loop for forlink in forlinks
              collect (pcase-let ((`(,source-id ,dest-id ,pos ,properties) forlink))
@@ -136,6 +130,8 @@
 ;; (ord--query-forlinks "29235CB5-7D53-4D2B-9112-61A3DCF4A66C")
 ;; (ord--query-forlinks "8F0AED6C-CA49-4101-B5E7-D5BAA6DB4B7B")
 
+;; following should break/be nil, since node no longer exists
+;; (ord--query-forlinks "CF3888AA-2432-4E72-9356-5187B802815D")
 
 (cl-defun ord--query-backlinks (node-id &key unique)
   "Return the backlinks for NODE-ID.
@@ -203,10 +199,7 @@
     (car (car (org-roam-db-query sql node-id)))))
 
 ;; (ord--node-name-from-id "29235CB5-7D53-4D2B-9112-61A3DCF4A66C")
-
-;; (setq first-id "39AB6401-0CCE-4784-85C5-BC7C6CB3F85C")
-;; (org-roam-node-title (org-roam-node-from-id first-id))
-;; (ord--node-name-from-id "39AB6401-0CCE-4784-85C5-BC7C6CB3F85C")
+;; (ord--node-name-from-id "CF3888AA-2432-4E72-9356-5187B802815D")
 
 (defun ord--file-from-id (node-id)
   (let* ((sql [:select [file]
@@ -215,6 +208,7 @@
     (car (car (org-roam-db-query sql node-id)))))
 
 ;; (ord--file-from-id "29235CB5-7D53-4D2B-9112-61A3DCF4A66C")
+;; (ord--file-from-id "CF3888AA-2432-4E72-9356-5187B802815D")
 
 ;;; basic functions for collections
 (defun ord-create-collection (collection-name)
@@ -256,13 +250,22 @@
 (defun ord--add-node-ids-to-collection (node-ids collection)
   "NODE-IDS is a list. Returns nil if no id's were added (i.e., they
 all were already in the collection), else returns t."
-  (let* ((old-id-list (ord-collection-node-ids collection))
-         (new-id-list (cl-delete-duplicates (append old-id-list node-ids) :test 'equal))
-         (already-there (= (length old-id-list) (length new-id-list))))
+  (let* ((old-id-list (ord-collection-node-ids collection))         
+         (new-id-list (cl-delete-duplicates (append old-id-list
+                                                    node-ids) :test 'equal))
+         (nonnil-id-list (seq-filter 'ord--node-name-from-id new-id-list))
+         (already-there (= (length old-id-list) (length nonnil-id-list))))
     (if already-there nil
-      (setf (ord-collection-node-ids collection) new-id-list)
+      (setf (ord-collection-node-ids collection) nonnil-id-list)
       (push old-id-list (ord-collection-history-stack collection))
       t)))
+
+;; (setq testcollectionname (random-letter-string 10))
+;; (setq testcollectiontest (ord-create-collection testcollectionname))
+
+;; (ord--add-node-ids-to-collection '("29235CB5-7D53-4D2B-9112-61A3DCF4A66C"
+;; "CF3888AA-2432-4E72-9356-5187B802815D") testcollectiontest)
+
 
 (defun ord--delete-node-ids-from-collection (node-ids-to-delete collection)
   (let* ((old-id-list (ord-collection-node-ids collection))
@@ -616,7 +619,7 @@ the same time:
              (number-to-string (length (ord-collection-node-ids
                                         ord-buffer-collection)))
              " entries)"))
-    (if-let ((node-ids (ord-collection-node-ids
+    (if-let (node-ids (seq-filter 'ord--node-name-from-id (ord-collection-node-ids
                         ord-buffer-collection)))
         (let ((sorted-node-id-list (sort
                                   node-ids
@@ -738,11 +741,11 @@ the same time:
     (ord-list-view-mode)    
     (setq tabulated-list-entries nil)
     (tabulated-list-init-header)
-    (dolist (node-id (ord-collection-node-ids collection))
+    (dolist (node-id (seq-filter 'ord--node-name-from-id (ord-collection-node-ids collection)))
       (let ((name (ord--node-name-from-id node-id))
             (backlinks-str (number-to-string (length
-  (ord--get-backlink-ids node-id)))))
-      (push (list node-id (vector name backlinks-str)) tabulated-list-entries))
+                                              (ord--get-backlink-ids node-id)))))
+        (push (list node-id (vector name backlinks-str)) tabulated-list-entries))
       (tabulated-list-print))))
 
 (defun ord-refresh-view-list ()
