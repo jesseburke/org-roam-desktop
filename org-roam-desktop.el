@@ -116,8 +116,8 @@ to the nodes."
         (ord--links-in-region)
       (if (ord--get-id-of-id-link)
           (list (ord--get-id-of-id-link))
-        (if ord-node-at-point-in-view
-            (list (org-roam-node-id (funcall ord-node-at-point-in-view)))
+        (if ord-node-id-at-point-in-view
+            (list (funcall ord-node-id-at-point-in-view))
           (ord-choose-node-id))))))
 
 (defun ord--start-of-file-node ()
@@ -303,11 +303,11 @@ all were already in the collection), else returns t."
 in the collection being displayed.")
 (put 'ord-goto-entry-function 'permanent-local t)
 
-(defvar ord-node-at-point-in-view nil
+(defvar ord-node-id-at-point-in-view nil
 "A buffer local variable: function that returns the id of node at point in current view buffer,
 e.g., the entry of the current row in list mode, or the entry being
 previewed in section mode.")
-(put 'ord-node-at-point-in-view 'permanent-local t)
+(put 'ord-node-id-at-point-in-view 'permanent-local t)
 
 (define-prefix-command 'ord-view-map)
 
@@ -335,9 +335,8 @@ previewed in section mode.")
   (let* ((node-ids (ord-collection-nodes collection))
          (node-ids-and-names (seq-map
                               (lambda (node-id)
-                                (let ((title (org-roam-node-title
-                                              (org-roam-node-from-id node-id))))
-                                  (cons title node-id)))
+                                (let ((name (ord--node-name-from-id node-id)))
+                                  (cons name node-id)))
                               node-ids))
          (selected-name (completing-read "Choose entry: "
                                          node-ids-and-names nil
@@ -690,7 +689,7 @@ the same time:
                   'ord--entries-in-region-section)
       (setq-local ord-goto-entry-function
                   'ord-goto-entry-function-section)
-      (setq-local ord-node-at-point-in-view 'org-roam-node-at-point)
+      (setq-local ord-node-id-at-point-in-view (lambda () (org-roam-node-id (org-roam-node-at-point))))
       (ord--section-view-render))
     (switch-to-buffer-other-window buffer)))
 
@@ -765,8 +764,7 @@ the same time:
       (setq-local ord-buffer-collection collection)
       (setq-local ord-entries-in-region-function
                   'ord--entries-in-region-list)
-      (setq-local ord-node-at-point-in-view (lambda ()
-                                              (org-roam-node-from-id (tabulated-list-get-id))))
+      (setq-local ord-node-id-at-point-in-view 'tabulated-list-get-id)
       (setq-local ord-refresh-view-function 'ord-refresh-view-list)
       ;; (setq-local ord-goto-entry-function 'ord-goto-entry-function-section)
       (ord--list-view-render collection))
