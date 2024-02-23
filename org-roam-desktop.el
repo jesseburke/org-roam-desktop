@@ -891,6 +891,31 @@ entry, whose heading is the name of the section. Then a subentry
         (kill-line))
       (switch-to-buffer-other-window buffer))))
 
+(defun ord-print-collection-as-org-list (collection)
+  (interactive (list (ord--local-collection-or-choose)))  
+  (let* ((node-id-list (sort (ord-collection-node-ids collection) ord-id-sort-function))
+         (first-node-id (car node-id-list)))
+    (newline)
+    (insert
+         (concat "- "
+                 (org-link-make-string
+                  (concat "id:" first-node-id)
+                  (ord--node-name-from-id first-node-id))))
+      (newline)
+      (seq-do
+       (lambda (node-id)         
+         (org-insert-item)
+         (insert
+          (org-link-make-string
+           (concat "id:" node-id)
+           (ord--node-name-from-id node-id))))
+       (cdr node-id-list))))
+
+;; (setq testcollectionname (random-letter-string 10))
+;; (setq testcollectiontest (ord-create-collection testcollectionname))
+;; (ord-print-collection-as-org-list testcollectiontest)
+;; (ord-close-collection testcollectiontest)
+
 (defun ord-export-collection-to-org-list (collection)
   (interactive (list (ord--local-collection-or-choose)))
   (let* ((buffer-name (concat (ord--section-buffer-name
@@ -899,28 +924,13 @@ entry, whose heading is the name of the section. Then a subentry
          (node-id-list (ord-collection-node-ids collection)) 
          (sorted-node-id-list (sort
                                node-id-list
-                               ord-id-sort-function)))         
+                               ord-id-sort-function))) 
     (with-current-buffer buffer
       (setq-local ord-buffer-collection collection)
       (erase-buffer)
       (org-mode)
-      (let ((first-node-id (car sorted-node-id-list)))
-        (insert
-         (concat "- "
-                 (org-link-make-string
-                  (concat "id:" first-node-id)
-                  (ord--node-name-from-id first-node-id)))))
-      (newline)
-      (seq-do
-       (lambda (node-id)         
-         (org-insert-item)
-         (insert
-          (org-link-make-string
-           (concat "id:" node-id)
-           (ord--node-name-from-id node-id)))         
-         (newline))
-       (cdr sorted-node-id-list)))
-    (switch-to-buffer-other-window buffer)))
+      (ord-print-collection-as-org-list collection)
+    (switch-to-buffer-other-window buffer))))
 
 ;;; ord-section-mode-map
 
