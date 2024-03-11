@@ -489,7 +489,7 @@ should be: (SHORT-ANSWER HELP-MESSAGE EXPAND-FUNCTION), where
 
 ;;;;; preview sections, mostly copied from org-roam
 (define-prefix-command 'ord-preview-map)
-(set-keymap-parent 'ord-preview-map ord-section-mode-map)
+(set-keymap-parent 'ord-preview-map ord-section-view-mode-map)
 (define-key ord-preview-map (kbd "<RET>") 'ord-preview-visit)
 
 (defclass ord-preview-section (org-roam-node-section)
@@ -570,7 +570,7 @@ to the exact location of the backlink."
 ;;;;; rendering the buffer
 
 (defclass ord-node-section (org-roam-node-section)
-  ((keymap :initform 'ord-section-mode-map))
+  ((keymap :initform 'ord-section-view-mode-map))
   "An `org-roam-node-section' based class, changing the initial keymap
   of the former.")
 
