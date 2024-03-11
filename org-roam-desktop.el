@@ -898,29 +898,21 @@ entry, whose heading is the name of the section. Then a subentry
     (with-current-buffer buffer
       (setq-local ord-buffer-collection collection)
       (erase-buffer)
-      (org-mode)
-      (org-insert-heading)
-      (insert (ord-collection-name collection))
-      (newline)
-      (let ((line-to-delete (make-marker)))
-        (set-marker line-to-delete (point))
-        (org-insert-subheading 1)        
-        (seq-do
-         (lambda (node-id)
-           (newline)
-           (org-insert-heading nil nil t)
-           (org-demote-subtree)
-           (insert
-            (org-link-make-string
-             (concat "id:" node-id)
-             (ord--node-name-from-id node-id)))
-           (newline 2)
-           (insert (ord-preview-get-contents
-                    (ord--file-from-id node-id)) "\n")
-           (newline))
-         sorted-node-id-list)
-        (goto-char (marker-position line-to-delete))
-        (kill-line))
+      (org-mode)      
+      (seq-do
+       (lambda (node-id)
+         (org-insert-heading nil nil t)         
+         (insert
+          (org-link-make-string
+           (concat "id:" node-id)
+           (ord--node-name-from-id node-id)))
+         (newline)
+         (insert (ord-preview-get-contents
+                  (ord--file-from-id node-id)) "\n")
+         (newline))
+       sorted-node-id-list)
+      (goto-char (point-min))
+      (org-cycle-global 1)
       (switch-to-buffer-other-window buffer))))
 
 (defun ord-print-collection-as-org-list (collection)
@@ -962,7 +954,8 @@ entry, whose heading is the name of the section. Then a subentry
       (erase-buffer)
       (org-mode)
       (ord-print-collection-as-org-list collection)
-    (switch-to-buffer-other-window buffer))))
+      (switch-to-buffer-other-window buffer))))
+
 
 ;;; ord-section-mode-map
 
