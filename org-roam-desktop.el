@@ -145,6 +145,21 @@
 ;;                        dest-id))))
 
 ;; (setq test-list '("29235CB5-7D53-4D2B-9112-61A3DCF4A66C" "8F0AED6C-CA49-4101-B5E7-D5BAA6DB4B7B"))
+;; (setq sql-query-str-old (format "SELECT * FROM links WHERE dest IN (%s);"
+;;                             (mapconcat (lambda (name) (format "'%s'" name)) test-list ",")))
+;; (setq sql-query-str (format "SELECT * FROM links WHERE dest IN (%s);"
+;;                             (mapconcat #'identity (mapcar (lambda (name) (format "'%s'" name))
+;;                                                           test-list) ",")))
+
+;; (emacsql-with-transaction (org-roam-db)
+;;   (emacsql (org-roam-db) [:execute sql-query-str-old]))
+;; (emacsql (org-roam-db) sql-query-str)
+;; (emacsql (org-roam-db) "SELECT * FROM links")
+;; (apply #'emacsql (org-roam-db) sql args)
+
+;; (mapconcat (lambda (node-id) (concat ":or " node-id "\n")) test-list)
+
+;; (setq test-list '("29235CB5-7D53-4D2B-9112-61A3DCF4A66C" "8F0AED6C-CA49-4101-B5E7-D5BAA6DB4B7B"))
 ;; (setq test-str (mapconcat (lambda (name) (format "'%s'" name)) test-list ","))
 
 ;; (ord--query-forlinks-of-list test-str)
@@ -221,6 +236,11 @@
 
 ;; (ord--node-name-from-id "29235CB5-7D53-4D2B-9112-61A3DCF4A66C")
 ;; (ord--node-name-from-id "CF3888AA-2432-4E72-9356-5187B802815D")
+
+(defun ord--list-of-node-names ()
+  (apply #'append (org-roam-db-query [:select [title] :from nodes])))
+
+;; (ord--list-of-node-names)
 
 (defun ord--file-from-id (node-id)
   (let* ((sql [:select [file]
@@ -956,6 +976,21 @@ entry, whose heading is the name of the section. Then a subentry
       (ord-print-collection-as-org-list collection)
       (switch-to-buffer-other-window buffer))))
 
+(defun ord-links-in-region-to-org-buffer ()
+  "Opens new org-mode buffer containing the entries of all of the
+links in the current region."
+  (interactive)
+  (let* ((node-ids
+          (if (and (region-active-p) ord-entries-in-region-function)
+                             (funcall ord-entries-in-region-function)
+            (ord--node-ids-at-point)))
+         (temp-name (org-id-uuid))
+         (temp-collection (make-ord-collection :name temp-name
+                              :id (concat "ord-" temp-name)
+                              :node-ids node-ids
+                              :marked-node-ids '()
+                              :history-stack '())))
+    (ord-export-collection-to-org-buffer temp-collection)))
 
 ;;; ord-section-mode-map
 
@@ -1011,5 +1046,7 @@ entry, whose heading is the name of the section. Then a subentry
 (define-key ord-map (kbd "M-k") #'ord-close-all-collections)
 (define-key ord-map (kbd "M-e") #'ord-mode-choose-entry-from-collection)
 (define-key ord-map (kbd "M-n") #'ord--goto-collection-notes)
+(define-key ord-map (kbd "M-e") #'ord-links-in-region-to-org-buffer)
 (provide 'org-roam-desktop)
+
 
