@@ -72,6 +72,16 @@
    (history-stack :initarg :history-stack :accessor ord-collection-history-stack)
    (needs-saving :initarg :needs-saving :accessor ord-collection-needs-saving)))
 
+(cl-defmethod (setf ord-collection-name) :after (value (collection ord-collection-class))
+  "After setting `name`, mark the collection as needing to be saved."
+  (setf (ord-collection-needs-saving collection) t))
+
+(cl-defmethod (setf ord-collection-node-ids) :after (value (collection ord-collection-class))
+  (setf (ord-collection-needs-saving collection) t))
+
+(cl-defmethod (setf ord-collection-node-ids) :after (value (collection ord-collection-class))
+  (setf (ord-collection-needs-saving collection) t))
+
 ;; (setq testcollection (make-instance
 ;;                       'ord-collection-class
 ;;                       :name "test-name"
@@ -84,6 +94,9 @@
 ;; (ord-collection-name testcollection)
 ;; (setf (ord-collection-name testcollection) "test-name2")
 ;; (ord-collection-name testcollection)
+
+;; (setf (ord-collection-name testcollection) "test-name1")
+;; (ord-collection-needs-saving testcollection)
 
 (defvar ord-collection-list '() "Global list of `loaded` collections.")
 
