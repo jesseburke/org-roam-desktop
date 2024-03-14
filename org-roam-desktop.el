@@ -63,7 +63,7 @@
   :group 'org-roam-faces)
 
 (cl-defstruct ord-collection  
-  name id node-ids marked-node-ids history-stack)
+  name id node-ids marked-node-ids deleted-node-ids history-stack)
 
 (defvar ord-collection-list '() "Global list of `loaded` collections.")
 
@@ -256,6 +256,7 @@
                               :id (concat "ord-" (org-id-uuid))
                               :node-ids '()
                               :marked-node-ids '()
+                              :deleted-node-ids '()
                               :history-stack '())))
     (add-to-list 'ord-collection-list new-collection)
     new-collection))
@@ -285,37 +286,57 @@
           chosen-collection
         (ord-create-collection read-text)))))
 
-(defun ord--add-node-ids-to-collection (node-ids collection)
-  "NODE-IDS is a list. Returns nil if no id's were added (i.e., they
-all were already in the collection), else returns t."
-  (let* ((old-id-list (ord-collection-node-ids collection))         
-         (new-id-list (cl-delete-duplicates (append old-id-list
-                                                    node-ids) :test 'equal))
-         (nonnil-id-list (seq-filter 'ord--node-name-from-id new-id-list))
-         (already-there (= (length old-id-list) (length nonnil-id-list))))
-    (if already-there nil
-      (setf (ord-collection-node-ids collection) nonnil-id-list)
-      (push old-id-list (ord-collection-history-stack collection))
-      t)))
+(defun ord--add-node-ids-to-collection (node-ids-to-add collection &optional force-add)
+  "Adds the list NODE-IDS to the collection, except if they have
+  already been deleted from the collection. Returns nil if no
+  id's were added (i.e., they all were already in the
+  collection), else returns t. If FORCE-ADD is true, then add all
+  node-ids, regardless if they have already been deleted."
+  (let ((filtered-node-ids-to-add
+         (if force-add node-ids-to-add
+           (seq-filter
+            (lambda (node-id)
+              (not (member node-id (ord-collection-deleted-node-ids collection))))
+            node-ids-to-add))))
+    (if (not filtered-node-ids-to-add) nil
+      (let* ((old-id-list (ord-collection-node-ids collection))
+             (new-id-list (cl-delete-duplicates (append old-id-list
+                                                        filtered-node-ids-to-add) :test 'equal))
+             (nonnil-id-list (seq-filter 'ord--node-name-from-id new-id-list))
+             (already-there (= (length old-id-list) (length nonnil-id-list))))
+        (if already-there nil
+          (setf (ord-collection-node-ids collection) nonnil-id-list)
+          (push old-id-list (ord-collection-history-stack collection))
+          t)))))
 
 ;; (setq testcollectionname (random-letter-string 10))
 ;; (setq testcollectiontest (ord-create-collection testcollectionname))
 
-;; (ord--add-node-ids-to-collection '("29235CB5-7D53-4D2B-9112-61A3DCF4A66C"
-;; "CF3888AA-2432-4E72-9356-5187B802815D") testcollectiontest)
+;;   (ord--add-node-ids-to-collection '("29235CB5-7D53-4D2B-9112-61A3DCF4A66C"
+;;    "CF3888AA-2432-4E72-9356-5187B802815D" "1DC0D5CB-D786-4EAC-B0A6-9D81CB3E6492")
+;;                                    testcollectiontest)
 
+;; (ord--add-node-ids-to-collection '("29235CB5-7D53-4D2B-9112-61A3DCF4A66C"
+;;    "CF3888AA-2432-4E72-9356-5187B802815D" "1DC0D5CB-D786-4EAC-B0A6-9D81CB3E6492")
+;;    testcollectiontest t)
 
 (defun ord--delete-node-ids-from-collection (node-ids-to-delete collection)
   (let* ((old-id-list (ord-collection-node-ids collection))
          (new-id-list
           (seq-filter (lambda (node-id)
-                        (not (memq node-id node-ids-to-delete)))
+                        (not (member node-id node-ids-to-delete)))
                       old-id-list)))
     (setf (ord-collection-node-ids collection) new-id-list)
-    (push old-id-list (ord-collection-history-stack collection))))
+    (push old-id-list (ord-collection-history-stack collection)))
 
- ;;(ord--delete-node-ids-from-collection
-  ;;'("1DC0D5CB-D786-4EAC-B0A6-9D81CB3E6492") (cadr ord-collection-list))
+  (setf (ord-collection-deleted-node-ids collection)
+        (cl-delete-duplicates (append (ord-collection-deleted-node-ids collection)
+                                      node-ids-to-delete) :test 'string=)))
+
+;; (ord--delete-node-ids-from-collection '("1DC0D5CB-D786-4EAC-B0A6-9D81CB3E6492")
+;;                                       (car ord-collection-list))
+;; (ord-collection-node-ids (car ord-collection-list))
+;; (ord-collection-deleted-node-ids (car ord-collection-list))
 
 ;;; viewing collections
 
