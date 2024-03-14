@@ -41,19 +41,13 @@
   :group 'org-roam-desktop
   :type 'string)
 
-(defcustom ord-section-view-functions
-  (list 'ord-section-view-function-default)
-  "Function that draws the section for each entry in a collection."
-  :group 'org-roam-desktop
-  :type 'function)
-
-(defun ord--default-id-sort-function (first-id second-id)
+(defun ord--default-sort-by-id-function (first-id second-id)
   (if-let (first-name (ord--node-name-from-id first-id))
       (if-let (second-name (ord--node-name-from-id second-id))
           (string< (upcase first-name) (upcase second-name)))))
 
-(defcustom ord-id-sort-function  
-  'ord--default-id-sort-function
+(defcustom ord-sort-by-id-function  
+  'ord--default-sort-by-id-function
   "Function that sorts the entries in a collection, before being
   displayed in an ord-mode buffer. The function should accept two
   node-ids, and return true if the first should come before the
@@ -61,7 +55,7 @@
   :group 'org-roam-desktop
   :type 'function)
 
-(setq ord-id-sort-function 'ord--default-id-sort-function)
+(setq ord-sort-by-id-function 'ord--default-sort-by-id-function)
 
 (defface ord-entry-title-face
   '((t :weight bold))
@@ -641,6 +635,12 @@ the same time:
   (ord-node-insert-section
    :node-id node-id))
 
+(defcustom ord-section-view-functions
+  (list 'ord-section-view-function-default)
+  "Function that draws the section for each entry in a collection."
+  :group 'org-roam-desktop
+  :type 'function)
+
 (setq ord-section-view-functions (list             
                                         'ord-section-view-function-default))
 
@@ -673,7 +673,7 @@ the same time:
                         ord-buffer-collection)))
         (let ((sorted-node-id-list (sort
                                   node-ids
-                                  ord-id-sort-function)))
+                                  ord-sort-by-id-function)))
           (magit-insert-section (root)
             (magit-insert-heading)      
             (seq-do
@@ -748,7 +748,7 @@ the same time:
   "FIRST and SECOND are elements of =tabulated-list-entries=."
   (let ((first-id (car first))
         (second-id (car second)))
-  (funcall ord-id-sort-function first-id second-id)))
+  (funcall ord-sort-by-id-function first-id second-id)))
 
 (define-derived-mode ord-list-view-mode tabulated-list-mode "org-roam desktop"
   "Major mode for displaying collection of org-roam nodes."
@@ -916,7 +916,7 @@ entry, whose heading is the name of the section. Then a subentry
          (node-id-list (ord-collection-node-ids collection)) 
          (sorted-node-id-list (sort
                             node-id-list
-                            ord-id-sort-function))
+                            ord-sort-by-id-function))
          (ord-preview-display-function #'ord-preview-full-display-function))
     (with-current-buffer buffer
       (setq-local ord-buffer-collection collection)
@@ -940,7 +940,7 @@ entry, whose heading is the name of the section. Then a subentry
 
 (defun ord-print-collection-as-org-list (collection)
   (interactive (list (ord--local-collection-or-choose)))  
-  (let* ((node-id-list (sort (ord-collection-node-ids collection) ord-id-sort-function))
+  (let* ((node-id-list (sort (ord-collection-node-ids collection) ord-sort-by-id-function))
          (first-node-id (car node-id-list)))
     (newline)
     (insert
@@ -971,7 +971,7 @@ entry, whose heading is the name of the section. Then a subentry
          (node-id-list (ord-collection-node-ids collection)) 
          (sorted-node-id-list (sort
                                node-id-list
-                               ord-id-sort-function))) 
+                               ord-sort-by-id-function))) 
     (with-current-buffer buffer
       (setq-local ord-buffer-collection collection)
       (erase-buffer)
