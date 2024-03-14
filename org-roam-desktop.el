@@ -95,8 +95,8 @@
         (ord--links-in-region)
       (if (ord--get-id-of-id-link)
           (list (ord--get-id-of-id-link))
-        (if ord-node-id-at-point-in-view
-            (list (funcall ord-node-id-at-point-in-view))
+        (if ord-node-id-at-point-function
+            (list (funcall ord-node-id-at-point-function))
           (ord-choose-node-get-id))))))
 
 (defun ord--start-of-file-node ()
@@ -319,13 +319,31 @@ all were already in the collection), else returns t."
 
 ;;; viewing collections
 
-;; any buffer that is viewing a collection (e.g., magit-section based,
-;; or tab-list based) will have the following buffer-local variables
-;; set
+;; parent keymap for view modes
+(define-prefix-command 'ord-view-map)
+
+;; any buffer that is viewing a collection will have the following buffer-local variable set
 
 (defvar ord-buffer-collection nil
   "A buffer local variable: the collection which the buffer is displaying.")
 (put 'ord-buffer-collection 'permanent-local t)
+
+(defun ord--base-buffer-name-default (collection)
+  "The name of a buffer for a collection starts with `*ord
+collection: ` plus collection name."
+  (concat
+   "*ord collection: "
+   (ord-collection-name collection)))
+
+(defcustom ord-base-buffer-name
+  'ord--base-buffer-name-default
+  "Function that creates most of name of view buffers. The function should acceptargument COLLECTION."
+  :group 'org-roam-desktop
+  :type 'function)
+
+(setq ord-base-buffer-name 'ord--base-buffer-name-default)
+
+;;;; buffer-local work functions
 
 (defvar ord-refresh-view-function nil
   "A buffer local variable: function to call to refresh view.")
@@ -341,18 +359,20 @@ all were already in the collection), else returns t."
 in the collection being displayed.")
 (put 'ord-goto-entry-function 'permanent-local t)
 
-(defvar ord-node-id-at-point-in-view nil
+(defvar ord-node-id-at-point-function nil
 "A buffer local variable: function that returns the id of node at point in current view buffer,
 e.g., the entry of the current row in list mode, or the entry being
 previewed in section mode.")
-(put 'ord-node-id-at-point-in-view 'permanent-local t)
-
-(define-prefix-command 'ord-view-map)
+(put 'ord-node-id-at-point-function 'permanent-local t)
 
 ;;;; commands for view buffers
-;; (buffers that have a non-nil ord-buffer-collection local value)
-                 
+;; (assumes that buffers have a non-nil ord-buffer-collection local value)
+
 (defun ord--local-collection-or-choose (&optional force-prompt)
+  "If current buffer has a non-nil ord-buffer-collection value,
+returns that, otherwise uses standard function to find
+collection. If optional argument FORCE-PROMPT is true, then
+prompt the user no matter what."
   (if current-prefix-arg (setq force-prompt t))
   (if force-prompt (ord--choose-collection t)
     (if ord-buffer-collection  ord-buffer-collection
@@ -367,8 +387,9 @@ previewed in section mode.")
   (if ord-refresh-view-function (funcall ord-refresh-view-function)))
 
 (defun ord-mode-choose-entry-from-collection (collection)
-  "User can select entry from current collection; after selection
-  point is moved there."
+  "User can select entry from current collection; after selection,
+point is moved there (if buffer-local var
+ord-goto-entry-function is non-nil)."
   (interactive (list (ord--local-collection-or-choose)))  
   (let* ((node-ids (ord-collection-node-ids collection))
          (node-ids-and-names (seq-map
@@ -439,17 +460,10 @@ previewed in section mode.")
         (pop (ord-collection-history-stack ord-buffer-collection)))
   (if ord-refresh-view-function (funcall ord-refresh-view-function)))
 
-(defun ord--base-buffer-name (collection)
-  "The name of a buffer for a collection starts with `*ord
-collection: ` plus collection name."
-  (concat
-   "*ord collection: "
-   (ord-collection-name collection)))
-
 (defun ord--goto-collection-notes (collection)
   (interactive (list (ord--local-collection-or-choose)))
   (let* ((notes-buffer-name
-          (concat (ord--base-buffer-name collection) " (notes)")))
+          (concat (funcall ord-base-buffer-name collection) " (notes)")))
     (if (get-buffer notes-buffer-name)
         (display-buffer (get-buffer notes-buffer-name))
       (let ((buffer (get-buffer-create notes-buffer-name)))
@@ -585,7 +599,7 @@ to the exact location of the backlink."
            (setq s (funcall fn s)))
          s)))))
 
-;;;;; rendering the buffer
+;;;;; rendering the section buffer
 
 (defclass ord-node-section (org-roam-node-section)
   ((keymap :initform 'ord-section-view-mode-map))
@@ -656,7 +670,7 @@ the same time:
 
 (defun ord--section-buffer-name (collection)  
   (concat
-   (ord--base-buffer-name collection)
+   (funcall ord-base-buffer-name collection)
    " (section view)"))
 
 (defun ord--section-view-render ()
@@ -738,7 +752,7 @@ the same time:
                   'ord--entries-in-region-section)
       (setq-local ord-goto-entry-function
                   'ord-goto-entry-function-section)
-      (setq-local ord-node-id-at-point-in-view (lambda () (org-roam-node-id (org-roam-node-at-point))))
+      (setq-local ord-node-id-at-point-function (lambda () (org-roam-node-id (org-roam-node-at-point))))
       (ord--section-view-render))
     (switch-to-buffer-other-window buffer)))
 
@@ -773,7 +787,7 @@ the same time:
 
 (defun ord--list-buffer-name (collection)  
   (concat
-   (ord--base-buffer-name collection)
+   (funcall ord-base-buffer-name collection)
    " (list view)"))
 
 (cl-defun ord--entries-in-region-list (&optional (start (region-beginning)) (end (region-end)))
@@ -816,7 +830,7 @@ the same time:
       (setq-local ord-buffer-collection collection)
       (setq-local ord-entries-in-region-function
                   'ord--entries-in-region-list)
-      (setq-local ord-node-id-at-point-in-view 'tabulated-list-get-id)
+      (setq-local ord-node-id-at-point-function 'tabulated-list-get-id)
       (setq-local ord-refresh-view-function 'ord-refresh-view-list)
       ;; (setq-local ord-goto-entry-function 'ord-goto-entry-function-section)
       (ord--list-view-render collection))
