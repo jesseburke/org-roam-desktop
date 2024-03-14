@@ -29,6 +29,7 @@
 (require 'org-roam)
 (require 'magit-section)
 (require 'cl-lib)
+(require 'eieio)
 
 (defgroup org-roam-desktop nil
   "Inspection and revision of org-roam notes."
@@ -62,8 +63,27 @@
   "Face for Org-roam titles."
   :group 'org-roam-faces)
 
-(cl-defstruct ord-collection  
-  name id node-ids marked-node-ids deleted-node-ids history-stack)
+(defclass ord-collection-class ()
+  ((name :initarg :name :accessor ord-collection-name)
+   (id :initarg :id :accessor ord-collection-id)
+   (node-ids :initarg :node-ids :accessor ord-collection-node-ids)
+   (marked-node-ids :initarg :marked-node-ids :accessor ord-collection-marked-node-ids)
+   (deleted-node-ids :initarg :deleted-node-ids :accessor ord-collection-deleted-node-ids)
+   (history-stack :initarg :history-stack :accessor ord-collection-history-stack)
+   (needs-saving :initarg :needs-saving :accessor ord-collection-needs-saving)))
+
+;; (setq testcollection (make-instance
+;;                       'ord-collection-class
+;;                       :name "test-name"
+;;                       :id (concat "ord-" (org-id-uuid))
+;;                       :node-ids '()
+;;                       :marked-node-ids '()
+;;                       :deleted-node-ids '()
+;;                       :history-stack '()
+;;                       :needs-saving nil))
+;; (ord-collection-name testcollection)
+;; (setf (ord-collection-name testcollection) "test-name2")
+;; (ord-collection-name testcollection)
 
 (defvar ord-collection-list '() "Global list of `loaded` collections.")
 
@@ -252,12 +272,13 @@
   (while (string= collection-name "")
     (setq collection-name (read-string "name of new collection (must be non-empty): """)))
   (let ((new-collection
-         (make-ord-collection :name collection-name
+         (make-instance 'ord-collection-class :name collection-name
                               :id (concat "ord-" (org-id-uuid))
                               :node-ids '()
                               :marked-node-ids '()
                               :deleted-node-ids '()
-                              :history-stack '())))
+                              :history-stack '()
+                              :needs-saving nil)))
     (add-to-list 'ord-collection-list new-collection)
     new-collection))
 
