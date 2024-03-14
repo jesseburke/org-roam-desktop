@@ -91,11 +91,11 @@
   "If region is active, and there are links in the region, returns ids
   of links in region; else, if point is on an org-roam link, then
   return that id; else, if in a magit-section buffer where
-  org-roam-node-at-point returns non-nil, returns id of entry; else,
-  prompts user to chooes an entry, and returns id of that. If
-  FORCE-PROMPT is true, then prompt no matter what."
+  org-roam-node-at-point returns non-nil, returns id of entry;
+  else, prompts user to chooes an org-roam entry, and returns id
+  of that. If FORCE-PROMPT is true, then prompt no matter what."
   (if force-prompt
-      (ord-choose-node-id)
+      (ord-choose-node-get-id)
     ;; in following, are checking if there are actually links in the region
     (if (and (use-region-p) (ord--links-in-region)) 
         (ord--links-in-region)
@@ -103,9 +103,10 @@
           (list (ord--get-id-of-id-link))
         (if ord-node-id-at-point-in-view
             (list (funcall ord-node-id-at-point-in-view))
-          (ord-choose-node-id))))))
+          (ord-choose-node-get-id))))))
 
 (defun ord--start-of-file-node ()
+  "This is an approximation."
   (save-excursion
     (goto-char (point-min))
     (org-fold-hide-drawer-toggle 'off t)
@@ -117,7 +118,7 @@
     (point)))
 
 (cl-defun ord--query-forlinks (node-id)
-  "Return the ids of the forward links for NODE-ID."
+  "Return list of ids of the forward links of NODE-ID."
   (let* ((sql [:select [source dest pos properties]
                        :from links
                        :where (= source $s1)
@@ -270,8 +271,10 @@
   "To be passed to interactive form, to choose a collection: if there
   is only one collection loaded, then that is it; otherwise, the
   user is prompted to choose from among the names of loaded
-  collections. If optional argument FORCE-PROMPT is true, then
-  prompt the user no matter what."
+  collections. If user enters the name of a collecion that
+  doesn't exist (or isn't already loaded), then a new colleciton
+  with that name is created. If optional argument FORCE-PROMPT is
+  true, then prompt the user no matter what."
   (if current-prefix-arg (setq force-prompt t))
   (if (and (not force-prompt) (= (length ord-collection-list) 1))
       (car ord-collection-list)
