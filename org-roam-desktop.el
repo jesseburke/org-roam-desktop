@@ -760,16 +760,16 @@ the same time:
                             ord-buffer-collection))      
       (let ((list-name
              (concat (ord-collection-name ord-buffer-collection) 
-             " ("
-             (number-to-string (length (ord-collection-node-ids
-                                        ord-buffer-collection)))
-             " entries)")))
+                     " ("
+                     (number-to-string (length (ord-collection-node-ids
+                                                ord-buffer-collection)))
+                     " entries)")))
         (setq tabulated-list-format (vector `(,list-name 40 ord--list-sort)
-                               '("Backlinks"      10 t) '("Forlinks"      10 t)))  
-    (setq tabulated-list-sort-key (cons list-name nil))
-    (add-hook 'tabulated-list-revert-hook
-              (lambda () (if ord-refresh-view-function (funcall
-                                                        ord-refresh-view-function)))))))
+                                            '("Backlinks"      10 t) '("Forlinks"      10 t)))  
+        (setq tabulated-list-sort-key (cons list-name nil))
+        (add-hook 'tabulated-list-revert-hook
+                  (lambda () (if ord-refresh-view-function (funcall
+                                                            ord-refresh-view-function)))))))
 
 (defun ord--list-buffer-name (collection)  
   (concat
