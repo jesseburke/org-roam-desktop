@@ -81,6 +81,10 @@
       (if (string= (substring link-address 0 2) "id")
           (substring link-address 3)))))
 
+(defun ord-choose-node-get-id ()  
+  (let ((node (org-roam-node-read nil nil nil t)))
+    (list (org-roam-node-id node))))
+
 (defun ord--node-ids-at-point (&optional force-prompt)
   "If region is active, and there are links in the region, returns ids
   of links in region; else, if point is on an org-roam link, then
@@ -219,10 +223,6 @@
           (org-next-link))))
     return-list))
 
-(defun ord-choose-node-id ()  
-  (let ((node (org-roam-node-read nil nil nil t)))
-    (list (org-roam-node-id node))))
-
 (defun ord--node-name-from-id (node-id)
   (let* ((sql [:select [title]
                          :from nodes
@@ -286,6 +286,9 @@
           chosen-collection
         (ord-create-collection read-text)))))
 
+;; (setq testcollectionname (random-letter-string 10))
+;; (setq testcollectiontest (ord-create-collection testcollectionname))
+
 (defun ord--add-node-ids-to-collection (node-ids-to-add collection &optional force-add)
   "Adds the list NODE-IDS to the collection, except if they have
   already been deleted from the collection. Returns nil if no
@@ -309,9 +312,6 @@
           (push old-id-list (ord-collection-history-stack collection))
           t)))))
 
-;; (setq testcollectionname (random-letter-string 10))
-;; (setq testcollectiontest (ord-create-collection testcollectionname))
-
 ;;   (ord--add-node-ids-to-collection '("29235CB5-7D53-4D2B-9112-61A3DCF4A66C"
 ;;    "CF3888AA-2432-4E72-9356-5187B802815D" "1DC0D5CB-D786-4EAC-B0A6-9D81CB3E6492")
 ;;                                    testcollectiontest)
@@ -328,7 +328,6 @@
                       old-id-list)))
     (setf (ord-collection-node-ids collection) new-id-list)
     (push old-id-list (ord-collection-history-stack collection)))
-
   (setf (ord-collection-deleted-node-ids collection)
         (cl-delete-duplicates (append (ord-collection-deleted-node-ids collection)
                                       node-ids-to-delete) :test 'string=)))
@@ -337,6 +336,7 @@
 ;;                                       (car ord-collection-list))
 ;; (ord-collection-node-ids (car ord-collection-list))
 ;; (ord-collection-deleted-node-ids (car ord-collection-list))
+
 
 ;;; viewing collections
 
@@ -356,13 +356,13 @@ collection: ` plus collection name."
    "*ord collection: "
    (ord-collection-name collection)))
 
-(defcustom ord-base-buffer-name
+(defcustom ord--base-buffer-name
   'ord--base-buffer-name-default
   "Function that creates most of name of view buffers. The function should acceptargument COLLECTION."
   :group 'org-roam-desktop
   :type 'function)
 
-(setq ord-base-buffer-name 'ord--base-buffer-name-default)
+(setq ord--base-buffer-name 'ord--base-buffer-name-default)
 
 ;;;; buffer-local work functions
 
@@ -391,9 +391,9 @@ previewed in section mode.")
 
 (defun ord--local-collection-or-choose (&optional force-prompt)
   "If current buffer has a non-nil ord-buffer-collection value,
-returns that, otherwise uses standard function to find
-collection. If optional argument FORCE-PROMPT is true, then
-prompt the user no matter what."
+   returns that, otherwise uses standard function to find
+   collection. If optional argument FORCE-PROMPT is true, then
+   prompt the user no matter what."
   (if current-prefix-arg (setq force-prompt t))
   (if force-prompt (ord--choose-collection t)
     (if ord-buffer-collection  ord-buffer-collection
@@ -409,9 +409,9 @@ prompt the user no matter what."
 
 (defun ord-mode-choose-entry-from-collection (collection)
   "User can select entry from current collection; after selection,
-point is moved there (if buffer-local var
-ord-goto-entry-function is non-nil)."
-  (interactive (list (ord--local-collection-or-choose)))  
+   point is moved there (if buffer-local var
+   ord-goto-entry-function is non-nil)."
+  (interactive (list (ord--local-collection-or-choose)))
   (let* ((node-ids (ord-collection-node-ids collection))
          (node-ids-and-names (seq-map
                               (lambda (node-id)
@@ -484,7 +484,7 @@ ord-goto-entry-function is non-nil)."
 (defun ord--goto-collection-notes (collection)
   (interactive (list (ord--local-collection-or-choose)))
   (let* ((notes-buffer-name
-          (concat (funcall ord-base-buffer-name collection) " (notes)")))
+          (concat (funcall ord--base-buffer-name collection) " (notes)")))
     (if (get-buffer notes-buffer-name)
         (display-buffer (get-buffer notes-buffer-name))
       (let ((buffer (get-buffer-create notes-buffer-name)))
@@ -691,7 +691,7 @@ the same time:
 
 (defun ord--section-buffer-name (collection)  
   (concat
-   (funcall ord-base-buffer-name collection)
+   (funcall ord--base-buffer-name collection)
    " (section view)"))
 
 (defun ord--section-view-render ()
@@ -808,7 +808,7 @@ the same time:
 
 (defun ord--list-buffer-name (collection)  
   (concat
-   (funcall ord-base-buffer-name collection)
+   (funcall ord--base-buffer-name collection)
    " (list view)"))
 
 (cl-defun ord--entries-in-region-list (&optional (start (region-beginning)) (end (region-end)))
@@ -1032,7 +1032,7 @@ links in the current region."
                               :history-stack '())))
     (ord-export-collection-to-org-buffer temp-collection)))
 
-;;; ord-section-mode-map
+;;; ord-view-map, parent keymap for view modes
 
 (define-key ord-view-map (kbd "g")
             (lambda () (interactive) (if ord-refresh-view-function (funcall ord-refresh-view-function))))
@@ -1088,5 +1088,3 @@ links in the current region."
 (define-key ord-map (kbd "M-n") #'ord--goto-collection-notes)
 (define-key ord-map (kbd "M-e") #'ord-links-in-region-to-org-buffer)
 (provide 'org-roam-desktop)
-
-
