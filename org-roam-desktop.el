@@ -502,7 +502,8 @@ should be: (SHORT-ANSWER HELP-MESSAGE EXPAND-FUNCTION), where
 (define-derived-mode ord-section-view-mode magit-section-mode "OrgRoamDesktop"
   "Major mode for displaying collection of org-roam nodes."
   (setq ord-section-view-mode-map (make-sparse-keymap))
-  (set-keymap-parent ord-section-view-mode-map ord-view-map)) 
+  (set-keymap-parent ord-section-view-mode-map
+                     (make-composed-keymap ord-view-map magit-section-mode-map)))
 
 ;;;;; preview sections, mostly copied from org-roam
 (define-prefix-command 'ord-preview-map)
@@ -753,7 +754,8 @@ the same time:
 (define-derived-mode ord-list-view-mode tabulated-list-mode "org-roam desktop"
   "Major mode for displaying collection of org-roam nodes."
   (setq ord-list-view-mode-map (make-sparse-keymap))
-  (set-keymap-parent ord-list-view-mode-map ord-view-map)
+  (set-keymap-parent ord-list-view-mode-map
+                     (make-composed-keymap ord-view-map tabulated-list-mode-map))
   (if-let (collection-name (ord-collection-name
                             ord-buffer-collection))      
       (let ((list-name
