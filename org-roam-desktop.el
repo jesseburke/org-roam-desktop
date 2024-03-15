@@ -372,6 +372,89 @@
 ;; (ord-collection-deleted-node-ids (car ord-collection-list))
 
 
+;;;; save, close, and load collections
+
+;;;;; translate collection between struct, plist, and json
+(defun ord--collection-to-plist (collection)
+  "COLLECTION should be an ord-collection struct. Returns a
+  plist representing that struct."
+  (list :name (ord-collection-name collection)
+        :id (ord-collection-id collection)
+        :nodes (vconcat (seq-filter (lambda (id) id) (ord-collection-node-ids
+                                                      collection)))))
+
+(defun ord--collection-from-plist (collection-plist)
+  "COLLECTION-PLIST should have keys :name, :id, and :nodes. Returns a
+  struct of type org-roam-desktop-collection."
+  (cl-destructuring-bind (&key name id nodes) collection-plist
+    (make-ord-collection :name name :id id
+                         :node-ids (mapcar 'identity nodes)
+                         :marked-node-ids '())))
+
+;; (ord--collection-from-plist (ord--collection-to-plist test-collection))
+
+(defun ord--collection-to-json (collection)
+  "COLLECTION should be an ord-collection struct. Returns a
+  json string representing that struct."
+  (json-serialize (ord--collection-to-plist collection)))
+
+;; (ord--collection-to-json test-collection)
+
+(defun ord--collection-from-json (collection-json)
+  "COLLECTION-JSON should be a string of json, with keys name, id, and nodes. Returns a
+  struct of type ord-collection with corresponding
+  values."
+  (ord--collection-from-plist (json-parse-string collection-json
+                                                 :object-type
+                                                 'plist)))
+
+;; (ord--collection-from-json (ord--collection-to-json test-collection))
+
+;;;;; save, close, and load functions
+
+(defun ord--default-file-name-for-collection (collection)
+  "The name of a file for a collection is its name plus json file extension."
+  (concat   
+   (ord-collection-name collection)   
+   ".json"))
+
+(defun ord-save-collection (collection)  
+  (interactive (list (ord--local-collection-or-choose)))
+  (let
+      ((file-name (read-file-name
+                   "Save collection as: "
+                   (file-name-concat org-roam-directory ord-save-dir)
+                   nil nil
+                   (ord--default-file-name-for-collection collection)))
+       (json-str (ord--collection-to-json collection)))
+    (unless (file-directory-p (file-name-directory file-name))
+      (make-directory (file-name-directory file-name) t))
+    (with-temp-file file-name
+      (insert json-str))))
+
+(defun ord-close-collection (collection-to-remove)
+  (interactive (list (ord--choose-collection nil t "Collection to close?: ")))
+  (setq ord-collection-list
+        (seq-remove (lambda (collection)
+                      (eq collection collection-to-remove))
+                    ord-collection-list)))
+
+(defun ord-load-collection ()
+  (interactive)
+  (let ((file-name
+         (read-file-name
+          "Find collection: "
+          (file-name-concat org-roam-directory ord-save-dir)
+          nil
+          t)))
+    (with-temp-buffer
+      (insert-file-contents file-name)
+      (add-to-list
+       'ord-collection-list
+       (ord--collection-from-json (buffer-substring-no-properties
+                                   (point-min) (point-max)))))))
+
+
 ;;; viewing collections
 
 ;; parent keymap for view modes
@@ -891,89 +974,7 @@ the same time:
       (ord--list-view-render collection))
     (switch-to-buffer-other-window buffer)))
 
-;;; save, close, and load collections
-
-;;;; translate collection between struct, plist, and json
-(defun ord--collection-to-plist (collection)
-  "COLLECTION should be an ord-collection struct. Returns a
-  plist representing that struct."
-  (list :name (ord-collection-name collection)
-        :id (ord-collection-id collection)
-        :nodes (vconcat (seq-filter (lambda (id) id) (ord-collection-node-ids
-                                                      collection)))))
-
-(defun ord--collection-from-plist (collection-plist)
-  "COLLECTION-PLIST should have keys :name, :id, and :nodes. Returns a
-  struct of type org-roam-desktop-collection."
-  (cl-destructuring-bind (&key name id nodes) collection-plist
-    (make-ord-collection :name name :id id
-                         :node-ids (mapcar 'identity nodes)
-                         :marked-node-ids '())))
-
-;; (ord--collection-from-plist (ord--collection-to-plist test-collection))
-
-(defun ord--collection-to-json (collection)
-  "COLLECTION should be an ord-collection struct. Returns a
-  json string representing that struct."
-  (json-serialize (ord--collection-to-plist collection)))
-
-;; (ord--collection-to-json test-collection)
-
-(defun ord--collection-from-json (collection-json)
-  "COLLECTION-JSON should be a string of json, with keys name, id, and nodes. Returns a
-  struct of type ord-collection with corresponding
-  values."
-  (ord--collection-from-plist (json-parse-string collection-json
-                                                 :object-type
-                                                 'plist)))
-
-;; (ord--collection-from-json (ord--collection-to-json test-collection))
-
-;;;; save, close, and load functions
-
-(defun ord--default-file-name-for-collection (collection)
-  "The name of a file for a collection is its name plus json file extension."
-  (concat   
-   (ord-collection-name collection)   
-   ".json"))
-
-(defun ord-save-collection (collection)  
-  (interactive (list (ord--local-collection-or-choose)))
-  (let
-      ((file-name (read-file-name
-                   "Save collection as: "
-                   (file-name-concat org-roam-directory ord-save-dir)
-                   nil nil
-                   (ord--default-file-name-for-collection collection)))
-       (json-str (ord--collection-to-json collection)))
-    (unless (file-directory-p (file-name-directory file-name))
-      (make-directory (file-name-directory file-name) t))
-    (with-temp-file file-name
-      (insert json-str))))
-
-(defun ord-close-collection (collection-to-remove)
-  (interactive (list (ord--choose-collection nil t "Collection to close?: ")))
-  (setq ord-collection-list
-        (seq-remove (lambda (collection)
-                      (eq collection collection-to-remove))
-                    ord-collection-list)))
-
-(defun ord-load-collection ()
-  (interactive)
-  (let ((file-name
-         (read-file-name
-          "Find collection: "
-          (file-name-concat org-roam-directory ord-save-dir)
-          nil
-          t)))
-    (with-temp-buffer
-      (insert-file-contents file-name)
-      (add-to-list
-       'ord-collection-list
-       (ord--collection-from-json (buffer-substring-no-properties
-                                   (point-min) (point-max)))))))
-
-;;; export collection into org-mode buffer
+;;;; export collection into org-mode buffer
 
 (defun ord-export-collection-to-org-buffer (collection)
   "Creates an org-mode buffer displaying COLLECTION. Will be one top level
@@ -1121,4 +1122,6 @@ links in the current region."
 (define-key ord-map (kbd "M-e") #'ord-mode-choose-entry-from-collection)
 (define-key ord-map (kbd "M-n") #'ord--goto-collection-notes)
 (define-key ord-map (kbd "M-e") #'ord-links-in-region-to-org-buffer)
+
 (provide 'org-roam-desktop)
+
