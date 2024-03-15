@@ -98,7 +98,7 @@
 ;; (setf (ord-collection-name testcollection) "test-name1")
 ;; (ord-collection-needs-saving testcollection)
 
-(defvar ord-collection-list '() "Global list of `loaded` collections.")
+(defvar ord--collection-list '() "Global list of `loaded` collections.")
 
 ;;; org(-roam) utility functions
 
@@ -292,7 +292,7 @@
                               :deleted-node-ids '()
                               :history-stack '()
                               :needs-saving nil)))
-    (add-to-list 'ord-collection-list new-collection)
+    (add-to-list 'ord--collection-list new-collection)
     new-collection))
 
 (cl-defun ord--choose-collection (&optional force-prompt require-match
@@ -305,14 +305,14 @@
   with that name is created. If optional argument FORCE-PROMPT is
   true, then prompt the user no matter what."
   (if current-prefix-arg (setq force-prompt t))
-  (if (and (not force-prompt) (= (length ord-collection-list) 1))
-      (car ord-collection-list)
+  (if (and (not force-prompt) (= (length ord--collection-list) 1))
+      (car ord--collection-list)
     (let* ((extended-list
             (seq-map (lambda (collection)
                        (cons
                         (ord-collection-name collection)
                         collection))
-                     ord-collection-list))
+                     ord--collection-list))
            (read-text (completing-read prompt-string
                                        extended-list nil require-match)))
       (if-let ((chosen-collection (cdr (assoc read-text
@@ -367,9 +367,9 @@
                                       node-ids-to-delete) :test 'string=)))
 
 ;; (ord--delete-node-ids-from-collection '("1DC0D5CB-D786-4EAC-B0A6-9D81CB3E6492")
-;;                                       (car ord-collection-list))
-;; (ord-collection-node-ids (car ord-collection-list))
-;; (ord-collection-deleted-node-ids (car ord-collection-list))
+;;                                       (car ord--collection-list))
+;; (ord-collection-node-ids (car ord--collection-list))
+;; (ord-collection-deleted-node-ids (car ord--collection-list))
 
 
 ;;;; save, close, and load collections
@@ -434,14 +434,26 @@
     (unless (file-directory-p (file-name-directory file-name))
       (make-directory (file-name-directory file-name) t))
     (with-temp-file file-name
-      (insert json-str))))
+      (insert json-str)))
+  (setf (ord-collection-needs-saving collection) nil))
 
 (defun ord-close-collection (collection-to-remove)
   (interactive (list (ord--choose-collection nil t "Collection to close?: ")))
-  (setq ord-collection-list
+  (when (ord-collection-needs-saving collection-to-remove)    
+    (if (y-or-n-p (concat "Save collection " (ord-collection-name collection-to-remove)
+                          " before closing?"))
+        (ord-save-collection collection-to-remove)))
+  (setq ord--collection-list
         (seq-remove (lambda (collection)
                       (eq collection collection-to-remove))
-                    ord-collection-list)))
+                    ord--collection-list)))
+
+(defun ord-close-all-collections ()
+  (interactive)
+  (when (y-or-n-p (format "Close all %d collections?" (length ord--collection-list)))
+    (seq-do 'ord-close-collection ord--collection-list)))
+
+(add-hook 'kill-emacs-hook #'ord-close-all-collections)
 
 (defun ord-load-collection ()
   (interactive)
@@ -454,10 +466,9 @@
     (with-temp-buffer
       (insert-file-contents file-name)
       (add-to-list
-       'ord-collection-list
+       'ord--collection-list
        (ord--collection-from-json (buffer-substring-no-properties
                                    (point-min) (point-max)))))))
-
 
 ;;; viewing collections
 
@@ -570,11 +581,9 @@ being previewed in section mode.")
   (if ord-refresh-view-function (funcall ord-refresh-view-function)))
 
 (defun ord-close-collection-and-buffer ()
-  (interactive)
-  (when (y-or-n-p "Are you sure you want to close this collection?")
-    (let ((inhibit-read-only t))
-      (ord-close-collection ord-buffer-collection)
-      (kill-this-buffer))))
+  (interactive)  
+  (ord-close-collection ord-buffer-collection)
+  (kill-this-buffer))
 
 (defun ord-view-other-collection ()
   (interactive)
@@ -1105,12 +1114,7 @@ links in the current region."
 
 ;;; ord-map, to be used anywhere in emacs
 (define-prefix-command 'ord-map)
-
-(defun ord-close-all-collections ()
-  (interactive)
-  (when (y-or-n-p (format "Close all %d collections?" (length ord-collection-list)))
-    (setq ord-collection-list ())))
-
+              
 (global-set-key (kbd "M-d") #'ord-map)
 (define-key ord-map (kbd "M-c")
             #'ord-create-collection)
