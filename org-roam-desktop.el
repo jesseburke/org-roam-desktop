@@ -72,14 +72,14 @@
    (history-stack :initarg :history-stack :accessor ord-collection-history-stack)
    (needs-saving :initarg :needs-saving :accessor ord-collection-needs-saving)))
 
-(cl-defmethod (setf ord-collection-name) :after (value (collection ord-collection-class))
+(cl-defmethod (setf ord-collection-name) :after (_value (collection ord-collection-class))
   "After setting `name`, mark the collection as needing to be saved."
   (setf (ord-collection-needs-saving collection) t))
 
-(cl-defmethod (setf ord-collection-node-ids) :after (value (collection ord-collection-class))
+(cl-defmethod (setf ord-collection-node-ids) :after (_value (collection ord-collection-class))
   (setf (ord-collection-needs-saving collection) t))
 
-(cl-defmethod (setf ord-collection-node-ids) :after (value (collection ord-collection-class))
+(cl-defmethod (setf ord-collection-node-ids) :after (_value (collection ord-collection-class))
   (setf (ord-collection-needs-saving collection) t))
 
 ;; (setq testcollection (make-instance
@@ -142,9 +142,9 @@
     (goto-char (point-min))
     (org-fold-hide-drawer-toggle 'off t)
     (goto-char (cdr (org-get-property-block)))
-    (next-line)
+    (forward-line)
     (while (looking-at-p org-keyword-regexp)
-      (next-line))
+      (forward-line))
     (org-fold--hide-drawers (point-min) (point))
     (point)))
 
@@ -387,10 +387,14 @@
   "COLLECTION-PLIST should have keys :name, :id, and :nodes. Returns a
   struct of type org-roam-desktop-collection."
   (cl-destructuring-bind (&key name id nodes) collection-plist
-    (make-ord-collection :name name :id id
-                         :node-ids (mapcar 'identity nodes)
-                         :marked-node-ids '())))
-
+    (make-instance 'ord-collection-class :name name
+                              :id id
+                              :node-ids (mapcar 'identity nodes)
+                              :marked-node-ids '()
+                              :deleted-node-ids '()
+                              :history-stack '()
+                              :needs-saving nil)))
+    
 ;; (ord--collection-from-plist (ord--collection-to-plist test-collection))
 
 (defun ord--collection-to-json (collection)
@@ -475,7 +479,8 @@ collection: ` plus collection name."
 
 (defcustom ord--base-buffer-name
   'ord--base-buffer-name-default
-  "Function that creates most of name of view buffers. The function should acceptargument COLLECTION."
+  "Function that creates most of name of view buffers. The function
+should acceptargument COLLECTION."
   :group 'org-roam-desktop
   :type 'function)
 
@@ -498,9 +503,10 @@ in the collection being displayed.")
 (put 'ord-goto-entry-function 'permanent-local t)
 
 (defvar ord-node-id-at-point-function nil
-"A buffer local variable: function that returns the id of node at point in current view buffer,
-e.g., the entry of the current row in list mode, or the entry being
-previewed in section mode.")
+"A buffer local variable: function that returns the id of node at
+point in current view buffer,
+e.g., the entry of the current row in list mode, or the entry
+being previewed in section mode.")
 (put 'ord-node-id-at-point-function 'permanent-local t)
 
 ;;;; commands for view buffers
@@ -552,15 +558,15 @@ previewed in section mode.")
     (ord-section-view new-collection)))
 
 (defun ord-mode-show-org-roam-buffer ()
-  (interactive)
   "Show the org-roam-mode buffer for entry point is on."
+  (interactive)  
   (org-roam-buffer-display-dedicated (org-roam-node-at-point)))
 
 (defun ord-choose-and-add-node (collection)
   (interactive (list (ord--local-collection-or-choose)))  
   (let* ((node (org-roam-node-read "Entry to add: " nil nil t))
          (node-id (org-roam-node-id node)))
-    (ord--add-node-ids-to-collection (list node-id)))
+    (ord--add-node-ids-to-collection (list node-id) collection))
   (if ord-refresh-view-function (funcall ord-refresh-view-function)))
 
 (defun ord-close-collection-and-buffer ()
@@ -687,7 +693,7 @@ window. In interactive calls OTHER-WINDOW is set with
       (with-current-buffer buf
         (widen)
         (goto-char (+ relative-point (ord--start-of-file-node)))
-        (when (org-invisible-p) (org-show-context))
+        (when (org-invisible-p) (org-fold-show-context))
         buf))))
 
 (defun ord-preview-default-display-function ()
@@ -712,7 +718,7 @@ This function returns the entire body of the entry, with each entry
                (org-roam-end-of-meta-data t)
                (point)))
         (end (point-max)))
-    (dotimes (i demote-level)
+    (dotimes (_i demote-level)
       (org-map-entries 'org-do-demote))
     (string-trim (buffer-substring-no-properties beg end))))
 
@@ -831,8 +837,7 @@ the same time:
             (magit-insert-heading)      
             (seq-do
              (lambda (node-id)
-               (let ((section-start (point))
-                     section-end)                 
+               (let ((section-start (point)))
                  (seq-do
                   (lambda (func)
                     (funcall func node-id))
@@ -936,7 +941,7 @@ the same time:
       (goto-char start)
       (while (< (point) end)        
         (push (tabulated-list-get-id) node-ids-in-region)
-        (next-line)))
+        (forward-line)))
     node-ids-in-region))
                    
 (defun ord--list-view-render (collection)
@@ -1039,11 +1044,7 @@ entry, whose heading is the name of the section. Then a subentry
   (interactive (list (ord--local-collection-or-choose)))
   (let* ((buffer-name (concat (ord--section-buffer-name
                                collection) "-list" ".org"))
-         (buffer (get-buffer-create buffer-name))
-         (node-id-list (ord-collection-node-ids collection)) 
-         (sorted-node-id-list (sort
-                               node-id-list
-                               ord-sort-by-id-function))) 
+         (buffer (get-buffer-create buffer-name)))
     (with-current-buffer buffer
       (setq-local ord-buffer-collection collection)
       (erase-buffer)
@@ -1060,11 +1061,14 @@ links in the current region."
                              (funcall ord-entries-in-region-function)
             (ord--node-ids-at-point)))
          (temp-name (org-id-uuid))
-         (temp-collection (make-ord-collection :name temp-name
+         (temp-collection
+          (make-instance 'ord-collection-class :name temp-name
                               :id (concat "ord-" temp-name)
                               :node-ids node-ids
                               :marked-node-ids '()
-                              :history-stack '())))
+                              :deleted-node-ids '()
+                              :history-stack '()
+                              :needs-saving nil)))
     (ord-export-collection-to-org-buffer temp-collection)))
 
 ;;; ord-view-map, parent keymap for view modes
