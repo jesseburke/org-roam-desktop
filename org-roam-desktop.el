@@ -134,7 +134,9 @@
           (list (ord--get-id-of-id-link))
         (if ord-node-id-at-point-function
             (list (funcall ord-node-id-at-point-function))
-          (ord-choose-node-get-id))))))
+          (if-let ((node-at-point (org-roam-node-at-point)))
+              (list (org-roam-node-id node-at-point))
+            (ord-choose-node-get-id)))))))
 
 (defun ord--start-of-file-node ()
   "This is an approximation."
@@ -534,11 +536,8 @@ being previewed in section mode.")
       (ord--choose-collection))))
 
 (defun ord-add-node-at-point (collection)
-  (interactive (list (ord--local-collection-or-choose)))  
-  (unless (ord--add-node-ids-to-collection (ord--node-ids-at-point)
-                                           collection)
-    (ord--add-node-ids-to-collection (ord--node-ids-at-point t)
-                                     collection))    
+  (interactive (list (ord--local-collection-or-choose)))
+  (ord--add-node-ids-to-collection (ord--node-ids-at-point) collection)    
   (if ord-refresh-view-function (funcall ord-refresh-view-function)))
 
 (defun ord-mode-choose-entry-from-collection (collection)
@@ -1132,4 +1131,3 @@ links in the current region."
 (define-key ord-map (kbd "M-e") #'ord-links-in-region-to-org-buffer)
 
 (provide 'org-roam-desktop)
-
