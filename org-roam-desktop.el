@@ -325,6 +325,18 @@
 ;; (setq testcollectionname (random-letter-string 10))
 ;; (setq testcollectiontest (ord-create-collection testcollectionname))
 
+(defun ord--list-of-node-ids-to-string (node-id-list)
+  "Returns a string with the node names corresponding to the ids in
+NODE-ID-LIST."
+  (let ((print-str ""))
+    (seq-do
+     (lambda (node-id)
+       (setq print-str (concat print-str (ord--node-name-from-id node-id) ", ")))
+     node-id-list)
+    (if (> (length print-str) 1)
+        (substring print-str 0 (- (length print-str) 2))
+    print-str)))
+
 (defun ord--add-node-ids-to-collection (node-ids-to-add collection &optional force-add)
   "Adds the list NODE-IDS to the collection, except if they have
   already been deleted from the collection. Returns nil if no
@@ -332,11 +344,14 @@
   collection), else returns t. If FORCE-ADD is true, then add all
   node-ids, regardless if they have already been deleted."
   (let ((filtered-node-ids-to-add
-         (if force-add node-ids-to-add
-           (seq-filter
-            (lambda (node-id)
-              (not (member node-id (ord-collection-deleted-node-ids collection))))
-            node-ids-to-add))))
+         (cl-delete-duplicates
+          (if force-add node-ids-to-add
+            (seq-filter
+             (lambda (node-id)
+               (and
+                (not (member node-id (ord-collection-deleted-node-ids collection)))
+                (not (member node-id (ord-collection-node-ids collection)))))
+             node-ids-to-add)) :test 'equal)))
     (if (not filtered-node-ids-to-add) nil
       (let* ((old-id-list (ord-collection-node-ids collection))
              (new-id-list (cl-delete-duplicates (append old-id-list
@@ -346,6 +361,9 @@
         (if already-there nil
           (setf (ord-collection-node-ids collection) nonnil-id-list)
           (push old-id-list (ord-collection-history-stack collection))
+          (message (concat (format "Added %d entries: " (length
+                                                         filtered-node-ids-to-add))                
+                           (ord--list-of-node-ids-to-string filtered-node-ids-to-add)))
           t)))))
 
 ;;   (ord--add-node-ids-to-collection '("29235CB5-7D53-4D2B-9112-61A3DCF4A66C"
@@ -637,7 +655,7 @@ should be: (SHORT-ANSWER HELP-MESSAGE EXPAND-FUNCTION), where
   :type 'elisp)
 
 (setq ord-mode-expand-alist ord--default-expand-alist)
-
+    
 (defun ord-expand-collection (collection)
   (interactive (list (ord--local-collection-or-choose)))  
   (let* ((answer-list
@@ -661,7 +679,6 @@ should be: (SHORT-ANSWER HELP-MESSAGE EXPAND-FUNCTION), where
                node-id-list)
               (ord--add-node-ids-to-collection new-node-id-list collection)
               (if ord-refresh-view-function (funcall ord-refresh-view-function)))))))
-
 
 ;;;; section-view
 
