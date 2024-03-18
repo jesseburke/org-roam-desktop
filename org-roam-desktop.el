@@ -6,7 +6,7 @@
 ;; URL: https://github.com/jesseburke/org-roam-desktop
 ;; Keywords: org-mode, roam, convenience, 
 ;; Version: 0.0.1
-;; Package-Requires: ((emacs "28.1") (org-roam "2.2.2"))
+;; Package-Requires: ((emacs "28.1") (org-roam "2.2.2") (magit-section) (cl-lib) (eieio) (tablist "1.0"))
 
 ;; This file is NOT part of GNU Emacs.
 
@@ -30,6 +30,7 @@
 (require 'magit-section)
 (require 'cl-lib)
 (require 'eieio)
+(require 'tablist)
 
 (defgroup org-roam-desktop nil
   "Inspection and revision of org-roam notes."
@@ -130,13 +131,17 @@
     ;; in following, are checking if there are actually links in the region
     (if (and (use-region-p) (ord--links-in-region)) 
         (ord--links-in-region)
-      (if (ord--get-id-of-id-link)
-          (list (ord--get-id-of-id-link))
-        (if ord-node-id-at-point-function
-            (list (funcall ord-node-id-at-point-function))
-          (if-let ((node-at-point (org-roam-node-at-point)))
-              (list (org-roam-node-id node-at-point))
-            (ord-choose-node-get-id)))))))
+      (if (equal major-mode 'ord-list-view-mode)
+          (seq-map
+           (lambda (item) (car item))
+           (tablist-get-marked-items))
+        (if (ord--get-id-of-id-link)
+            (list (ord--get-id-of-id-link))
+          (if ord-node-id-at-point-function
+              (list (funcall ord-node-id-at-point-function))
+            (if-let ((node-at-point (org-roam-node-at-point)))
+                (list (org-roam-node-id node-at-point))
+              (ord-choose-node-get-id))))))))
 
 (defun ord--start-of-file-node ()
   "This is an approximation."
@@ -933,11 +938,11 @@ the same time:
         (second-id (car second)))
   (funcall ord-sort-by-id-function first-id second-id)))
 
-(define-derived-mode ord-list-view-mode tabulated-list-mode "org-roam desktop"
+(define-derived-mode ord-list-view-mode tablist-mode "org-roam desktop"
   "Major mode for displaying collection of org-roam nodes."
   (setq ord-list-view-mode-map (make-sparse-keymap))
   (set-keymap-parent ord-list-view-mode-map
-                     (make-composed-keymap ord-view-map tabulated-list-mode-map))
+                     (make-composed-keymap ord-view-map tablist-mode-map))
   (if-let (collection-name (ord-collection-name
                             ord-buffer-collection))      
       (let ((list-name
