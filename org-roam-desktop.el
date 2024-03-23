@@ -57,7 +57,7 @@
   :group 'org-roam-desktop
   :type 'function)
 
-(setq ord-sort-by-id-function 'ord--default-sort-by-id-function)
+;; (setq ord-sort-by-id-function 'ord--default-sort-by-id-function)
 
 (defface ord-entry-title-face
   '((t :weight bold))
@@ -659,7 +659,7 @@ should be: (SHORT-ANSWER HELP-MESSAGE EXPAND-FUNCTION), where
   :group 'org-roam-desktop
   :type 'elisp)
 
-(setq ord-mode-expand-alist ord--default-expand-alist)
+;; (setq ord-mode-expand-alist ord--default-expand-alist)
     
 (defun ord-expand-collection (collection)
   (interactive (list (ord--local-collection-or-choose)))  
@@ -760,7 +760,7 @@ to the exact location of the backlink."
   :group 'org-roam
   :type 'function)
 
-(setq ord-preview-display-function #'ord-preview-default-display-function)
+;; (setq ord-preview-display-function #'ord-preview-default-display-function)
 
 (defun ord-preview-get-contents (file)
   "Get preview content for FILE."
@@ -830,8 +830,8 @@ the same time:
   :group 'org-roam-desktop
   :type 'function)
 
-(setq ord-section-view-functions (list             
-                                        'ord-section-view-function-default))
+;; (setq ord-section-view-functions (list             
+;;                                        'ord-section-view-function-default))
 
 (defvar ord--section-view-node-to-position-plist '()
   "A buffer local variable: stores where the section of a given node
@@ -1129,7 +1129,8 @@ links in the current region."
 (define-key ord-view-map (kbd "r") #'ord-rename-collection)
 (define-key ord-view-map (kbd "e") #'ord-expand-collection)
 (define-key ord-view-map (kbd "u") #'ord-undo)
-(define-key ord-view-map (kbd "d") #'ord-mode-duplicate-collection)
+(define-key ord-view-map (kbd "d") #'ord-mode-delete-entries)
+(define-key ord-view-map (kbd "D") #'ord-mode-duplicate-collection)
 (define-key ord-view-map (kbd "q") #'quit-window)
 
 
