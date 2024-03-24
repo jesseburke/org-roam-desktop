@@ -294,8 +294,7 @@
   (let ((new-collection
          (make-instance 'ord-collection-class :name collection-name
                               :id (concat "ord-" (org-id-uuid))
-                              :node-ids '()
-                              :marked-node-ids '()
+                              :node-ids '()                              
                               :deleted-node-ids '()
                               :history-stack '()
                               :needs-saving nil)))
@@ -415,7 +414,6 @@ NODE-ID-LIST."
     (make-instance 'ord-collection-class :name name
                               :id id
                               :node-ids (mapcar 'identity nodes)
-                              :marked-node-ids '()
                               :deleted-node-ids '()
                               :history-stack '()
                               :needs-saving nil)))
@@ -1095,7 +1093,6 @@ links in the current region."
           (make-instance 'ord-collection-class :name temp-name
                               :id (concat "ord-" temp-name)
                               :node-ids node-ids
-                              :marked-node-ids '()
                               :deleted-node-ids '()
                               :history-stack '()
                               :needs-saving nil)))
