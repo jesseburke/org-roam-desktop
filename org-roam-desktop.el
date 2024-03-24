@@ -124,7 +124,7 @@
   of links in region; else, if point is on an org-roam link, then
   return that id; else, if in a magit-section buffer where
   org-roam-node-at-point returns non-nil, returns id of entry;
-  else, prompts user to chooes an org-roam entry, and returns id
+  else, prompts user to choose an org-roam entry, and returns id
   of that. If FORCE-PROMPT is true, then prompt no matter what."
   (if force-prompt
       (ord-choose-node-get-id)
@@ -560,7 +560,8 @@ being previewed in section mode.")
 
 (defun ord-add-node-at-point (collection)
   (interactive (list (ord--local-collection-or-choose)))
-  (ord--add-node-ids-to-collection (ord--node-ids-at-point) collection)    
+  (unless (ord--add-node-ids-to-collection (ord--node-ids-at-point) collection)
+    (ord--add-node-ids-to-collection (ord--node-ids-at-point t) collection))
   (if ord-refresh-view-function (funcall ord-refresh-view-function)))
 
 (defun ord-mode-choose-entry-from-collection (collection)
