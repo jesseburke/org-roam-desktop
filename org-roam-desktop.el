@@ -845,7 +845,7 @@ the same time:
    (funcall ord--base-buffer-name collection)
    " (section view)"))
 
-(defun ord--section-view-render ()
+(defun ord--section-view-render (&optional no-sort)
   (setq-local ord--section-view-node-to-position-plist '())
   (let ((inhibit-read-only t))
     (erase-buffer)
@@ -858,9 +858,10 @@ the same time:
              " entries)"))
     (if-let (node-ids (seq-filter 'ord--node-name-from-id (ord-collection-node-ids
                         ord-buffer-collection)))
-        (let ((sorted-node-id-list (sort
-                                  node-ids
-                                  ord-sort-by-id-function)))
+        (let ((sorted-node-id-list
+               (if no-sort node-ids (sort
+                                     node-ids
+                                     ord-sort-by-id-function))))
           (magit-insert-section (root)
             (magit-insert-heading)      
             (seq-do
@@ -896,15 +897,17 @@ the same time:
             node-ids)
     node-ids-in-region))
 
-(defun ord-refresh-view-section ()
+(defun ord-refresh-view-section (&optional no-sort)
   "Refresh the contents of the currently selected org-roam-desktop
-  buffer."
-  (interactive)  
+  buffer. If NO-SORT is non-nil, then do not use the sort
+  function on entries. A universal prefix argument sets NO-SORT to t."
+  (interactive)
+  (if current-prefix-arg (setq no-sort t))
   (unless (not (derived-mode-p 'ord-section-view-mode))
     (let ((point (point)))
       (if (magit-current-section)
           (magit-section-cache-visibility (magit-current-section)))
-      (ord--section-view-render)
+      (ord--section-view-render no-sort)
       (goto-char point))))
 
 (defun ord-goto-entry-function-section (node-id)
