@@ -558,6 +558,12 @@ being previewed in section mode.")
     (if ord-buffer-collection  ord-buffer-collection
       (ord--choose-collection))))
 
+(defun ord-clear-delete-list (collection)
+  "Sets the deleted-node-ids field of COLLECTION to be nil."
+  (interactive (list (ord--local-collection-or-choose)))
+  (setf (ord-collection-deleted-node-ids collection) '())
+  (message "Collection delete list set to empty."))
+
 (defun ord-add-node-at-point (collection)
   (interactive (list (ord--local-collection-or-choose)))
   (unless (ord--add-node-ids-to-collection (ord--node-ids-at-point) collection)
@@ -1137,6 +1143,7 @@ links in the current region."
               (org-roam-node-visit (org-roam-node-from-id (car
                                                            (ord--node-ids-at-point))))))
 (define-key ord-view-map (kbd "c") #'ord-mode-choose-entry-from-collection)
+(define-key ord-view-map (kbd "C") #'ord-clear-delete-list)
 (define-key ord-view-map (kbd "o")
             #'ord-export-collection-to-org-buffer)
 (define-key ord-view-map (kbd "w") #'ord-close-collection-and-buffer)
