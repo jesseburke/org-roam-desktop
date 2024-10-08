@@ -307,7 +307,7 @@
   "To be passed to interactive form, to choose a collection: if there
   is only one collection loaded, then that is it; otherwise, the
   user is prompted to choose from among the names of loaded
-  collections. If user enters the name of a collecion that
+  collections. If user enters the name of a collection that
   doesn't exist (or isn't already loaded), then a new colleciton
   with that name is created. If optional argument FORCE-PROMPT is
   true, then prompt the user no matter what."
@@ -363,7 +363,9 @@ NODE-ID-LIST."
                                                         filtered-node-ids-to-add) :test 'equal))
              (nonnil-id-list (seq-filter 'ord--node-name-from-id new-id-list))
              (already-there (= (length old-id-list) (length nonnil-id-list))))
-        (if already-there nil
+        (message "old-id-list = %s" (prin1-to-string old-id-list))
+        (message "new-id-list = %s" (prin1-to-string new-id-list))
+        (if already-there (message "No entries added")
           (setf (ord-collection-node-ids collection) nonnil-id-list)
           (push old-id-list (ord-collection-history-stack collection))
           (message (concat (format "Added %d entries: " (length
@@ -395,7 +397,6 @@ NODE-ID-LIST."
 ;;                                       (car ord--collection-list))
 ;; (ord-collection-node-ids (car ord--collection-list))
 ;; (ord-collection-deleted-node-ids (car ord--collection-list))
-
 
 ;;;; save, close, and load collections
 
@@ -653,7 +654,7 @@ being previewed in section mode.")
         (setf (ord-collection-redo-node-ids ord-buffer-collection) nil)))
   (if ord-refresh-view-function (funcall ord-refresh-view-function)))
 
-(defun ord--goto-collection-notes (collection)
+(defun ord-goto-collection-notes (collection)
   (interactive (list (ord--local-collection-or-choose)))
   (let* ((notes-buffer-name
           (concat (funcall ord--base-buffer-name collection) " (notes)")))
@@ -663,6 +664,15 @@ being previewed in section mode.")
         (with-current-buffer buffer
           (org-mode))
         (display-buffer buffer)))))
+
+(defun ord-move-nodes-to-other-collection (collection-to-move-to &optional copy-not-move)
+  (interactive (list (ord--choose-collection t nil "Collection to move to?: ")))
+  (if current-prefix-arg (setq copy-not-move t))
+  (let ((nodes (ord--node-ids-at-point)))
+    (ord--add-node-ids-to-collection nodes collection-to-move-to )
+    (unless (or copy-not-move (not ord-buffer-collection))
+      (ord--delete-node-ids-from-collection nodes ord-buffer-collection)
+      (if ord-refresh-view-function (funcall ord-refresh-view-function)))))
 
 ;;;;; expand collection       
 
@@ -735,7 +745,7 @@ window. In interactive calls OTHER-WINDOW is set with
                                                         start))))
            (file (oref (magit-section-at) file))
            (buf (find-file-noselect file))
-           (display-buffer-fn (if not-other-window                               
+           (display-buffer-fn (if not-other-window
                                   #'pop-to-buffer-same-window #'switch-to-buffer-other-window)))
       (funcall display-buffer-fn buf)
       (with-current-buffer buf
@@ -1155,7 +1165,10 @@ links in the current region."
 (define-key ord-view-map (kbd "d") #'ord-mode-delete-entries)
 (define-key ord-view-map (kbd "D") #'ord-mode-duplicate-collection)
 (define-key ord-view-map (kbd "q") #'quit-window)
+(define-key ord-view-map (kbd "M") #'ord-move-nodes-to-other-collection)
 
+;; why is this not working?
+(define-key ord-list-view-mode-map (kbd "C-m") #'tablist-unmark-forward)
 
 ;;; ord-map, to be used anywhere in emacs
 (define-prefix-command 'ord-map)
@@ -1173,7 +1186,7 @@ links in the current region."
 (define-key ord-map (kbd "M-o") #'ord-load-collection)
 (define-key ord-map (kbd "M-k") #'ord-close-all-collections)
 (define-key ord-map (kbd "M-e") #'ord-mode-choose-entry-from-collection)
-(define-key ord-map (kbd "M-n") #'ord--goto-collection-notes)
+(define-key ord-map (kbd "M-n") #'ord-goto-collection-notes)
 (define-key ord-map (kbd "M-e") #'ord-links-in-region-to-org-buffer)
 
 (provide 'org-roam-desktop)
